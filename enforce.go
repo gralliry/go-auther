@@ -1,6 +1,10 @@
 package auther
 
-import "fmt"
+import (
+	"fmt"
+
+	"auther/match"
+)
 
 // Enforce 检查用户是否有权限访问指定资源。
 //
@@ -29,12 +33,12 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 
 	// 先遍历角色自有资源，再遍历收到的授权。
 	for pattern := range role.Resources {
-		if match(pattern, normalized) {
+		if match.Match(pattern, normalized) {
 			return true, nil
 		}
 	}
 	for _, g := range role.GrantsIn {
-		if match(g.Resource, normalized) {
+		if match.Match(g.Resource, normalized) {
 			return true, nil
 		}
 	}

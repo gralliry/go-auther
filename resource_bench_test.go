@@ -1,34 +1,38 @@
 package auther
 
-import "testing"
+import (
+	"testing"
+
+	"auther/match"
+)
 
 func BenchmarkMatchExact(b *testing.B) {
 	for b.Loop() {
-		match("/user/create", "/user/create")
+		match.Match("/user/create", "/user/create")
 	}
 }
 
 func BenchmarkMatchNoMatchLiteral(b *testing.B) {
 	for b.Loop() {
-		match("/user/create", "/user/delete")
+		match.Match("/user/create", "/user/delete")
 	}
 }
 
 func BenchmarkMatchStar(b *testing.B) {
 	for b.Loop() {
-		match("/user/*/edit", "/user/123/edit")
+		match.Match("/user/*/edit", "/user/123/edit")
 	}
 }
 
 func BenchmarkMatchDoubleStar(b *testing.B) {
 	for b.Loop() {
-		match("/a/**/z", "/a/b/c/d/e/z")
+		match.Match("/a/**/z", "/a/b/c/d/e/z")
 	}
 }
 
 func BenchmarkMatchDoubleStarMany(b *testing.B) {
 	for b.Loop() {
-		match("/api/**/export", "/api/v1/users/admin/reports/2024/export")
+		match.Match("/api/**/export", "/api/v1/users/admin/reports/2024/export")
 	}
 }
 
