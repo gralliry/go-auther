@@ -47,21 +47,20 @@ type Authorizer struct {
 // NewAuthorizer 使用给定的适配器创建 Authorizer。
 // 如果适配器中已存储数据，则会加载恢复；否则自动创建一个
 // ID 为 "root" 且拥有 "/**" 资源的根角色。
-// adapter 可以为 nil，此时数据仅保存在内存中。
+// adapter 为 nil 时使用默认内存适配器。
 func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
+	if adapter == nil {
+		adapter = newDefaultAdapter()
+	}
 	a := &Authorizer{
 		adapter: adapter,
 		roles:   make(map[string]*model.RoleNode),
 		users:   make(map[string]*model.UserNode),
 	}
 
-	var snap *snapshot.Policy
-	if adapter != nil {
-		var err error
-		snap, err = adapter.Load()
-		if err != nil {
-			return nil, fmt.Errorf("auther: load policy: %w", err)
-		}
+	snap, err := adapter.Load()
+	if err != nil {
+		return nil, fmt.Errorf("auther: load policy: %w", err)
 	}
 	if snap != nil && len(snap.Roles) > 0 {
 		if err := a.buildTree(snap); err != nil {
@@ -259,41 +258,26 @@ func (a *Authorizer) snapshot() *snapshot.Policy {
 
 // save 将当前状态全量写入适配器。
 func (a *Authorizer) save() error {
-	if a.adapter == nil {
-		return nil
-	}
 	return a.adapter.Save(a.snapshot())
 }
 
 // saveSetRole 持久化角色创建。
 func (a *Authorizer) saveSetRole(roleID, parentID string) error {
-	if a.adapter == nil {
-		return nil
-	}
 	return a.adapter.SetRole(snapshot.Role{ID: roleID, ParentID: parentID})
 }
 
 // saveSetUser 持久化用户创建。
 func (a *Authorizer) saveSetUser(roleID, userID string) error {
-	if a.adapter == nil {
-		return nil
-	}
 	return a.adapter.SetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
 // saveUnsetUser 持久化用户删除。
 func (a *Authorizer) saveUnsetUser(roleID, userID string) error {
-	if a.adapter == nil {
-		return nil
-	}
 	return a.adapter.UnsetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
 // saveSetGrant 持久化授权添加。
 func (a *Authorizer) saveSetGrant(fromRoleID, toRoleID, resource string) error {
-	if a.adapter == nil {
-		return nil
-	}
 	return a.adapter.SetGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource})
 }
 
@@ -344,3 +328,28 @@ func (a *Authorizer) checkCycle() error {
 	}
 	return nil
 }
+
+// defaultAdapter is an in-memory adapter used when no adapter is provided.
+type defaultAdapter struct {
+	snap *snapshot.Policy
+}
+
+func newDefaultAdapter() Adapter { return &defaultAdapter{} }
+
+func (d *defaultAdapter) Load() (*snapshot.Policy, error) {
+	if d.snap == nil {
+		return nil, nil
+	}
+	c := *d.snap
+	return &c, nil
+}
+func (d *defaultAdapter) Save(s *snapshot.Policy) error {
+	d.snap = s
+	return nil
+}
+func (d *defaultAdapter) SetRole(role snapshot.Role) error       { return nil }
+func (d *defaultAdapter) UnsetRole(role snapshot.Role) error     { return nil }
+func (d *defaultAdapter) SetUser(user snapshot.User) error       { return nil }
+func (d *defaultAdapter) UnsetUser(user snapshot.User) error     { return nil }
+func (d *defaultAdapter) SetGrant(grant snapshot.Grant) error    { return nil }
+func (d *defaultAdapter) UnsetGrant(grant snapshot.Grant) error  { return nil }
