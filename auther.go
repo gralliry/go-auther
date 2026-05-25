@@ -81,10 +81,11 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 	}
 
 	a.root = &model.RoleNode{
-		ID:        "root",
-		Children:  make(map[string]*model.RoleNode),
-		Resources: map[string]bool{"/**": true},
-		Users:     make(map[string]*model.UserNode),
+		ID:         "root",
+		Children:   make(map[string]*model.RoleNode),
+		Resources:  map[string]bool{"/**": true},
+		GrantedMap: make(map[string]bool),
+		Users:      make(map[string]*model.UserNode),
 	}
 	a.roles["root"] = a.root
 
@@ -105,10 +106,11 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 	// 第一阶段：创建所有角色节点。
 	for _, rs := range snapshot.Roles {
 		role := &model.RoleNode{
-			ID:        rs.ID,
-			Children:  make(map[string]*model.RoleNode),
-			Resources: make(map[string]bool),
-			Users:     make(map[string]*model.UserNode),
+			ID:         rs.ID,
+			Children:   make(map[string]*model.RoleNode),
+			Resources:  make(map[string]bool),
+			GrantedMap: make(map[string]bool),
+			Users:      make(map[string]*model.UserNode),
 		}
 		for _, res := range rs.Resources {
 			role.Resources[res] = true
@@ -133,6 +135,7 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 				ID:        "root",
 				Children:  make(map[string]*model.RoleNode),
 				Resources: map[string]bool{"/**": true},
+				GrantedMap: make(map[string]bool),
 				Users:     make(map[string]*model.UserNode),
 			}
 		}
@@ -207,6 +210,7 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		grant := model.RoleGrant{FromRoleID: gs.FromRoleID, ToRoleID: gs.ToRoleID, Resource: gs.Resource}
 		fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 		toRole.GrantsIn = append(toRole.GrantsIn, grant)
+		toRole.GrantedMap[gs.Resource] = true
 	}
 
 	// 仅在确实清理了数据且存在适配器时才写回持久化存储。

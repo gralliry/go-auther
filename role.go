@@ -21,11 +21,12 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	}
 
 	role := &model.RoleNode{
-		ID:        roleID,
-		Parent:    parent,
-		Children:  make(map[string]*model.RoleNode),
-		Resources: make(map[string]bool),
-		Users:     make(map[string]*model.UserNode),
+		ID:         roleID,
+		Parent:     parent,
+		Children:   make(map[string]*model.RoleNode),
+		Resources:  make(map[string]bool),
+		GrantedMap: make(map[string]bool),
+		Users:      make(map[string]*model.UserNode),
 	}
 	a.roles[roleID] = role
 	parent.Children[roleID] = role
@@ -69,6 +70,19 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		}
 		r.GrantsIn = filterGrantsByFrom(r.GrantsIn, subtreeSet)
 		r.GrantsOut = filterGrantsByTo(r.GrantsOut, subtreeSet)
+	}
+
+	// 重建幸存角色的 GrantedMap
+	for _, r := range a.roles {
+		if subtreeSet[r.ID] {
+			continue
+		}
+		r.GrantedMap = make(map[string]bool)
+		for _, g := range r.GrantsIn {
+			if !subtreeSet[g.FromRoleID] {
+				r.GrantedMap[g.Resource] = true
+			}
+		}
 	}
 
 	// 解除父角色引用后删除子树中的所有角色。

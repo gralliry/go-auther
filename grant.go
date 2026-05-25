@@ -53,6 +53,7 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 	grant := model.RoleGrant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource}
 	fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
+	toRole.GrantedMap[resource] = true
 	return a.save()
 }
 
@@ -100,6 +101,17 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 			break
 		}
 	}
+	// 检查是否还有同资源的其他授权
+	stillHas := false
+	for _, g := range toRole.GrantsIn {
+		if g.Resource == resource {
+			stillHas = true
+			break
+		}
+	}
+	if !stillHas {
+		delete(toRole.GrantedMap, resource)
+	}
 	if !found {
 		return fmt.Errorf("%w: %s -> %s %s", ErrGrantNotFound, fromRoleID, toRoleID, resource)
 	}
@@ -123,6 +135,17 @@ func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet m
 		if g.Resource == resource && subtreeSet[g.ToRoleID] {
 			if grantee := roles[g.ToRoleID]; grantee != nil {
 				grantee.GrantsIn = removeGrantIn(grantee.GrantsIn, g.FromRoleID, resource)
+				// 检查是否还有同资源的其他授权
+				stillHas := false
+				for _, gr := range grantee.GrantsIn {
+					if gr.Resource == resource {
+						stillHas = true
+						break
+					}
+				}
+				if !stillHas {
+					delete(grantee.GrantedMap, resource)
+				}
 			}
 			continue
 		}

@@ -31,6 +31,11 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 		return false, fmt.Errorf("auther: user %s has no role — corrupted state", userID)
 	}
 
+	// 快速路径：精确资源匹配 O(1)
+	if role.GrantedMap[normalized] {
+		return true, nil
+	}
+
 	// 先遍历角色自有资源，再遍历收到的授权。
 	for pattern := range role.Resources {
 		if match.Match(pattern, normalized) {
