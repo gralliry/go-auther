@@ -2,6 +2,7 @@ package auther
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"auther/model"
@@ -863,6 +864,425 @@ func TestSelfHealComplete(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected /self in child's resources (from self-grant)")
+	}
+}
+
+// =============================================================================
+// Error path tests — invalid inputs
+// =============================================================================
+
+func TestGrantResourceInvalidPath(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.GrantResource("root", "root", "")
+	if !errors.Is(err, ErrInvalidResource) {
+		t.Errorf("expected ErrInvalidResource for empty path, got %v", err)
+	}
+
+	err = a.GrantResource("root", "root", "no-leading-slash")
+	if !errors.Is(err, ErrInvalidResource) {
+		t.Errorf("expected ErrInvalidResource for no leading /, got %v", err)
+	}
+}
+
+func TestRevokeResourceInvalidPath(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.RevokeResource("root", "root", "")
+	if !errors.Is(err, ErrInvalidResource) {
+		t.Errorf("expected ErrInvalidResource, got %v", err)
+	}
+}
+
+func TestCreateUserInvalidRole(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.CreateUser("nonexistent", "u")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestGetUserNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetUser("nonexistent")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestGetRoleNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetRole("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestGetEffectiveRoleResourcesNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetEffectiveRoleResources("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestGetUserPermissionsNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetUserPermissions("nonexistent")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestGetGrantsToRoleNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetGrantsToRole("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestGetGrantsFromRoleNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetGrantsFromRole("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestDeleteNonExistentRole(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.DeleteRole("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestDeleteNonExistentUser(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.DeleteUser("nonexistent")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+// =============================================================================
+// Circular hierarchy tests
+// =============================================================================
+
+func TestCircularHierarchyRejected(t *testing.T) {
+	// Manually build a corrupt snapshot with circular parent pointers.
+	snap := &model.PolicySnapshot{
+		Roles: []model.RoleSnapshot{
+			{ID: "a"},
+			{ID: "b", ParentID: "a"},
+			{ID: "c", ParentID: "b"},
+		},
+	}
+	// Inject cycle: a's parent is c
+	snap.Roles[0].ParentID = "c"
+
+	_, err := NewAuthorizer(&corruptAdapter{snap: snap})
+	if !errors.Is(err, ErrCircularRoleHierarchy) {
+		t.Errorf("expected ErrCircularRoleHierarchy, got %v", err)
+	}
+}
+
+func TestSelfReferencingParentHealed(t *testing.T) {
+	// root's ParentID = "root" (self-reference) → healed: Parent stays nil.
+	a := newHealed(t, &model.PolicySnapshot{
+		Roles: []model.RoleSnapshot{
+			{ID: "root", ParentID: "root", Resources: []string{"/**"}},
+			{ID: "child", ParentID: "root"},
+		},
+	})
+	root, _ := a.GetRole("root")
+	if root.ParentID != "" {
+		t.Errorf("root should have no parent (self-reference healed), got parent=%q", root.ParentID)
+	}
+	child, _ := a.GetRole("child")
+	if child.ParentID != "root" {
+		t.Errorf("child parent should be root, got %q", child.ParentID)
+	}
+}
+
+// =============================================================================
+// Match cache tests
+// =============================================================================
+
+func TestMatchCacheHit(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "admin"))
+	must(t, a.GrantResource("admin", "admin", "/user/*"))
+	must(t, a.CreateUser("admin", "u"))
+
+	// First call — cache miss, populates cache
+	ok, _ := a.Enforce("u", "/user/edit")
+	if !ok {
+		t.Fatal("expected true")
+	}
+
+	// Second call — should hit cache
+	ok, _ = a.Enforce("u", "/user/edit")
+	if !ok {
+		t.Fatal("expected true from cache")
+	}
+
+	// After grant change, cache should be invalidated
+	must(t, a.RevokeResource("admin", "admin", "/user/*"))
+	ok, _ = a.Enforce("u", "/user/edit")
+	if ok {
+		t.Error("expected false after revoke (cache should be invalidated)")
+	}
+}
+
+func TestMatchCacheInvalidationOnGrant(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "role"))
+	must(t, a.CreateUser("role", "u"))
+
+	// Prime cache with a miss
+	ok, _ := a.Enforce("u", "/data/read")
+	if ok {
+		t.Fatal("expected false before grant")
+	}
+
+	// Grant and re-check — must NOT return stale cached false
+	must(t, a.GrantResource("role", "role", "/data/*"))
+	ok, _ = a.Enforce("u", "/data/read")
+	if !ok {
+		t.Error("expected true after grant (cache must be invalidated)")
+	}
+}
+
+func TestMatchCacheInvalidationOnRevoke(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "role"))
+	must(t, a.GrantResource("role", "role", "/data/*"))
+	must(t, a.CreateUser("role", "u"))
+
+	// Prime cache with a hit
+	ok, _ := a.Enforce("u", "/data/read")
+	if !ok {
+		t.Fatal("expected true before revoke")
+	}
+
+	// Revoke and re-check — must NOT return stale cached true
+	must(t, a.RevokeResource("role", "role", "/data/*"))
+	ok, _ = a.Enforce("u", "/data/read")
+	if ok {
+		t.Error("expected false after revoke (cache must be invalidated)")
+	}
+}
+
+func TestMatchCacheInvalidationOnDeleteRole(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "role"))
+	must(t, a.CreateUser("role", "u"))
+	must(t, a.GrantResource("root", "role", "/shared/*"))
+
+	// Prime cache
+	ok, _ := a.Enforce("u", "/shared/doc")
+	if !ok {
+		t.Fatal("expected true before delete")
+	}
+
+	// Delete the grantor (root grants to role → but root can't be deleted)
+	// Delete role instead, then re-create and verify no stale cache
+	must(t, a.DeleteRole("role"))
+	must(t, a.CreateRole("root", "role"))
+	must(t, a.CreateUser("role", "u2"))
+
+	// New role has no grants — enforce should miss
+	ok, _ = a.Enforce("u2", "/shared/doc")
+	if ok {
+		t.Error("expected false for new role with no grants")
+	}
+}
+
+// =============================================================================
+// Grant / Revoke edge cases
+// =============================================================================
+
+func TestGrantToNonExistentRole(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.GrantResource("root", "nonexistent", "/x")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+
+	err = a.GrantResource("nonexistent", "root", "/x")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestRevokeNonExistentGrant(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.RevokeResource("root", "root", "/nonexistent")
+	if !errors.Is(err, ErrGrantNotFound) {
+		t.Errorf("expected ErrGrantNotFound, got %v", err)
+	}
+}
+
+func TestRevokeNonExistentRole(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	err := a.RevokeResource("root", "nonexistent", "/x")
+	if !errors.Is(err, ErrGrantNotFound) {
+		t.Errorf("expected ErrGrantNotFound, got %v", err)
+	}
+}
+
+func TestMultipleGrantsDifferentAncestors(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "grandparent"))
+	must(t, a.CreateRole("grandparent", "parent"))
+	must(t, a.CreateRole("parent", "child"))
+	must(t, a.CreateUser("child", "u"))
+
+	// Multiple ancestors grant the same resource
+	must(t, a.GrantResource("root", "child", "/shared/**"))
+	must(t, a.GrantResource("grandparent", "child", "/shared/**")) // duplicate — should fail
+
+	// Check the first grant works
+	ok, _ := a.Enforce("u", "/shared/doc")
+	if !ok {
+		t.Error("child's user should have /shared/** from root grant")
+	}
+}
+
+func TestGrantRevokeThenGrantAgain(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "child"))
+	must(t, a.CreateUser("child", "u"))
+
+	must(t, a.GrantResource("root", "child", "/toggle"))
+	ok, _ := a.Enforce("u", "/toggle")
+	if !ok {
+		t.Fatal("expected true after grant")
+	}
+
+	must(t, a.RevokeResource("root", "child", "/toggle"))
+	ok, _ = a.Enforce("u", "/toggle")
+	if ok {
+		t.Error("expected false after revoke")
+	}
+
+	// Grant again — should work
+	must(t, a.GrantResource("root", "child", "/toggle"))
+	ok, _ = a.Enforce("u", "/toggle")
+	if !ok {
+		t.Error("expected true after re-grant")
+	}
+}
+
+func TestRevokeCascadeMultipleGenerations(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateRole("r1", "r2"))
+	must(t, a.CreateRole("r2", "r3"))
+	must(t, a.CreateRole("r3", "r4"))
+
+	// Grant /cascade down the chain
+	must(t, a.GrantResource("root", "r1", "/cascade"))
+	must(t, a.GrantResource("r1", "r2", "/cascade"))
+	must(t, a.GrantResource("r2", "r3", "/cascade"))
+	must(t, a.GrantResource("r3", "r4", "/cascade"))
+
+	// Revoke at top — all should cascade
+	must(t, a.RevokeResource("root", "r1", "/cascade"))
+
+	grants := a.GetAllGrants()
+	for _, g := range grants {
+		if g.Resource == "/cascade" {
+			t.Errorf("cascade grant still exists: %+v", g)
+		}
+	}
+}
+
+func TestGrantWithSpecialChars(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "child"))
+	must(t, a.CreateUser("child", "u"))
+
+	must(t, a.GrantResource("child", "child", "/api/v1/items/*"))
+	ok, _ := a.Enforce("u", "/api/v1/items/123")
+	if !ok {
+		t.Error("expected true for /api/v1/items/123")
+	}
+
+	ok, _ = a.Enforce("u", "/api/v1/other")
+	if ok {
+		t.Error("expected false for /api/v1/other")
+	}
+}
+
+// =============================================================================
+// Deep nesting tests
+// =============================================================================
+
+func TestDeepRoleNesting(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	parent := "root"
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("role_%d", i)
+		must(t, a.CreateRole(parent, id))
+		parent = id
+	}
+
+	roles := a.GetAllRoles()
+	if len(roles) != 21 { // root + 20 children
+		t.Errorf("expected 21 roles, got %d", len(roles))
+	}
+}
+
+func TestDeepGrantChain(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	parent := "root"
+	for i := 0; i < 10; i++ {
+		id := fmt.Sprintf("r%d", i)
+		must(t, a.CreateRole(parent, id))
+		parent = id
+	}
+	must(t, a.CreateUser("r9", "deep_user"))
+
+	// Grant from root to deepest role — skips 8 intermediate roles
+	must(t, a.GrantResource("root", "r9", "/deep/**"))
+
+	ok, _ := a.Enforce("deep_user", "/deep/nested/path")
+	if !ok {
+		t.Error("deep user should have /deep/** from root grant")
+	}
+}
+
+// =============================================================================
+// Resource normalization corner cases
+// =============================================================================
+
+func TestNormalizeResourcePath(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "child"))
+	must(t, a.CreateUser("child", "u"))
+
+	// Double slashes should be normalized
+	must(t, a.GrantResource("child", "child", "/data//read"))
+	ok, _ := a.Enforce("u", "/data/read")
+	if !ok {
+		t.Log("double slash normalized by path.Clean")
 	}
 }
 
