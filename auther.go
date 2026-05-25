@@ -90,13 +90,13 @@ func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
 	a.roles = make(map[string]*model.RoleNode)
 	a.users = make(map[string]*model.UserNode)
 
-	rootID, cleansed := a.buildRoles(snapshot.Roles)
-	cleansed = a.linkParents(snapshot.Roles, rootID) || cleansed
+	cleansed := a.loadRoles(snapshot.Roles)
 
 	if err := a.checkCycle(); err != nil {
 		return err
 	}
 
+	// 不要合并，可能有短路行为
 	cleansed = a.loadUsers(snapshot.Users) || cleansed
 	cleansed = a.loadGrants(snapshot.Grants) || cleansed
 
@@ -108,19 +108,19 @@ func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
 	return nil
 }
 
-// buildRoles 创建所有角色节点，返回根角色 ID 和是否发生过清理。
-func (a *Authorizer) buildRoles(roles []snapshot.Role) (rootID string, cleansed bool) {
+// loadRoles 创建所有角色节点并建立父子链接，返回是否发生过数据清洗。
+func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool) {
 	for _, rs := range roles {
-		role := &model.RoleNode{
+		a.roles[rs.ID] = &model.RoleNode{
 			ID:         rs.ID,
 			Children:   make(map[string]*model.RoleNode),
 			GrantedMap: make(map[string]bool),
 			Users:      make(map[string]*model.UserNode),
 		}
-		a.roles[rs.ID] = role
 	}
 
 	// 确定根角色：首个 ParentID 为空的角色。
+	var rootID string
 	for _, rs := range roles {
 		if rs.ParentID == "" {
 			rootID = rs.ID
@@ -140,11 +140,8 @@ func (a *Authorizer) buildRoles(roles []snapshot.Role) (rootID string, cleansed 
 		}
 	}
 	a.root = a.roles[rootID]
-	return rootID, cleansed
-}
 
-// linkParents 为所有角色建立父子链接。无效父角色 → 挂载到根。
-func (a *Authorizer) linkParents(roles []snapshot.Role, rootID string) (cleansed bool) {
+	// 建立父子链接。无效父角色 → 挂载到根。
 	for _, rs := range roles {
 		if rs.ID == rootID {
 			continue
