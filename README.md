@@ -24,18 +24,18 @@ func main() {
     a, _ := auther.NewAuthorizer(nil)
 
     // Build hierarchy: root -> admin -> editor
-    a.CreateRole("root", "admin")
-    a.CreateRole("admin", "editor")
+    _ = a.CreateRole("root", "admin")
+    _ = a.CreateRole("admin", "editor")
 
     // Grant resources from root to roles
-    a.Grant("root", "admin", "/user/*")
-    a.Grant("root", "admin", "/reports/*")
-    a.Grant("root", "editor", "/data/*")
+    _ = a.Grant("root", "admin", "/user/*")
+    _ = a.Grant("root", "admin", "/reports/*")
+    _ = a.Grant("root", "editor", "/data/*")
 
     // admin delegates /reports/* to editor
-    a.Grant("admin", "editor", "/reports/*")
+    _ = a.Grant("admin", "editor", "/reports/*")
 
-    a.CreateUser("editor", "alice")
+    _ = a.CreateUser("editor", "alice")
 
     ok, _ := a.Enforce("alice", "/data/read")  // true
     ok, _ = a.Enforce("alice", "/reports/q1")  // true
@@ -137,6 +137,20 @@ a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
 import fileadapter "github.com/gralliry/auther/adapters/file"
 
 a, _ := auther.NewAuthorizer(fileadapter.NewFileAdapter("/path/to/policy.json"))
+```
+
+**SQL** (MySQL, PostgreSQL, SQLite — any `database/sql` driver):
+
+```go
+import (
+    "database/sql"
+    _ "github.com/go-sql-driver/mysql" // or lib/pq, modernc.org/sqlite, etc.
+    sqladapter "github.com/gralliry/auther/adapters/sql"
+)
+
+db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")
+adapter, _ := sqladapter.NewSQLAdapter(db, "auther_policy")
+a, _ := auther.NewAuthorizer(adapter)
 ```
 
 **No adapter:** pass `nil` for in-memory-only.
