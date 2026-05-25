@@ -83,8 +83,6 @@ func (a *Authorizer) Load() error {
 		return nil
 	}
 
-	a.roles = make(map[string]*model.RoleNode)
-	a.users = make(map[string]*model.UserNode)
 	var cleansed bool
 
 	// 创建所有角色节点。
