@@ -2,13 +2,14 @@ package model
 
 // RoleNode 表示角色树中的一个角色节点。
 type RoleNode struct {
-	ID         string
-	Parent     *RoleNode
-	Children   map[string]*RoleNode
+	ID       string
+	Parent   *RoleNode
+	Children map[string]*RoleNode
+	Users    map[string]*UserNode
+
 	GrantedMap map[string]bool
-	GrantsIn   []GrantInfo
-	GrantsOut  []GrantInfo
-	Users      map[string]*UserNode
+	GrantsIn   []*GrantInfo
+	GrantsOut  []*GrantInfo
 
 	matchCache map[string]bool
 }
