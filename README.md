@@ -164,6 +164,29 @@ a, _ := auther.NewAuthorizer(adapter)
 
 **No adapter:** pass `nil` for in-memory-only.
 
+### Custom adapter
+
+Implement the `Adapter` interface to integrate any storage backend:
+
+```go
+type myAdapter struct {
+    // your storage here
+}
+
+func (m *myAdapter) Load() (*snapshot.Policy, error)          { /* load from your store */ }
+func (m *myAdapter) Save(s *snapshot.Policy) error            { /* save full snapshot */ }
+func (m *myAdapter) SetRole(role snapshot.Role) error         { /* insert role */ }
+func (m *myAdapter) UnsetRole(role snapshot.Role) error       { /* delete role */ }
+func (m *myAdapter) SetUser(user snapshot.User) error         { /* insert user */ }
+func (m *myAdapter) UnsetUser(user snapshot.User) error       { /* delete user */ }
+func (m *myAdapter) SetGrant(grant snapshot.Grant) error      { /* insert grant */ }
+func (m *myAdapter) UnsetGrant(grant snapshot.Grant) error    { /* delete grant */ }
+
+a, _ := auther.NewAuthorizer(&myAdapter{})
+```
+
+For backends that can't do incremental writes (e.g., JSON file), implement the incremental methods by caching the snapshot and doing full rewrites — see `adapters/json` for a reference.
+
 ### Self-healing
 
 On load, corrupted data is repaired: orphan roles reattached to root, dangling users/grants dropped, ancestor violations removed, duplicates deduplicated. Result is written back automatically.
