@@ -72,7 +72,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		r.GrantsOut = filterGrantsByTo(r.GrantsOut, subtreeSet)
 	}
 
-	// 重建幸存角色的 GrantedMap
+	// 重建幸存角色的 GrantedMap，并清空匹配缓存。
 	for _, r := range a.roles {
 		if subtreeSet[r.ID] {
 			continue
@@ -83,6 +83,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 				r.GrantedMap[g.Resource] = true
 			}
 		}
+		r.ResetMatchCache()
 	}
 
 	// 解除父角色引用后删除子树中的所有角色。

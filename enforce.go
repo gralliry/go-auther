@@ -36,17 +36,26 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 		return true, nil
 	}
 
+	// 匹配缓存：避免重复的 glob 匹配开销
+	if cached, ok := role.GetMatchCache(normalized); ok {
+		return cached, nil
+	}
+
 	// 先遍历角色自有资源，再遍历收到的授权。
 	for pattern := range role.Resources {
 		if match.Match(pattern, normalized) {
+			role.SetMatchCache(normalized, true)
 			return true, nil
 		}
 	}
 	for _, g := range role.GrantsIn {
 		if match.Match(g.Resource, normalized) {
+			role.SetMatchCache(normalized, true)
 			return true, nil
 		}
 	}
+
+	role.SetMatchCache(normalized, false)
 	return false, nil
 }
 

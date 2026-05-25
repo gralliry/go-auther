@@ -40,6 +40,7 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 			return nil
 		}
 		toRole.Resources[resource] = true
+		toRole.ResetMatchCache()
 		return a.save()
 	}
 
@@ -54,6 +55,7 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 	fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
 	toRole.GrantedMap[resource] = true
+	toRole.ResetMatchCache()
 	return a.save()
 }
 
@@ -83,6 +85,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 			return ErrGrantNotFound
 		}
 		delete(toRole.Resources, resource)
+		toRole.ResetMatchCache()
 		return a.save()
 	}
 
@@ -116,6 +119,8 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 		return fmt.Errorf("%w: %s -> %s %s", ErrGrantNotFound, fromRoleID, toRoleID, resource)
 	}
 
+	toRole.ResetMatchCache()
+
 	// 级联清理：删除子树中所有针对同一资源的子授权。
 	subtree := a.collectSubtree(toRoleID)
 	subtreeSet := make(map[string]bool, len(subtree))
@@ -124,6 +129,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 	}
 	for _, r := range subtree {
 		r.GrantsOut = removeSubtreeGrants(r.GrantsOut, resource, subtreeSet, a.roles)
+		r.ResetMatchCache()
 	}
 	return a.save()
 }
@@ -146,6 +152,7 @@ func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet m
 				if !stillHas {
 					delete(grantee.GrantedMap, resource)
 				}
+				grantee.ResetMatchCache()
 			}
 			continue
 		}
