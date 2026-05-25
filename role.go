@@ -162,8 +162,8 @@ func roleToInfo(role *model.RoleNode) *model.RoleInfo {
 		Resources:  make([]string, 0, len(role.Resources)),
 		SubRoleIDs: make([]string, 0, len(role.Children)),
 		UserIDs:    make([]string, 0, len(role.Users)),
-		GrantsIn:   append([]model.RoleGrant(nil), role.GrantsIn...),
-		GrantsOut:  append([]model.RoleGrant(nil), role.GrantsOut...),
+		GrantsIn:   append([]model.GrantInfo(nil), role.GrantsIn...),
+		GrantsOut:  append([]model.GrantInfo(nil), role.GrantsOut...),
 	}
 	if role.Parent != nil {
 		info.ParentID = role.Parent.ID
@@ -181,7 +181,7 @@ func roleToInfo(role *model.RoleNode) *model.RoleInfo {
 }
 
 // filterGrantsByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
-func filterGrantsByFrom(grants []model.RoleGrant, excluded map[string]bool) []model.RoleGrant {
+func filterGrantsByFrom(grants []model.GrantInfo, excluded map[string]bool) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if excluded[g.FromRoleID] {
@@ -193,7 +193,7 @@ func filterGrantsByFrom(grants []model.RoleGrant, excluded map[string]bool) []mo
 }
 
 // filterGrantsByTo 过滤掉 ToRoleID 在排除集合中的授权记录。
-func filterGrantsByTo(grants []model.RoleGrant, excluded map[string]bool) []model.RoleGrant {
+func filterGrantsByTo(grants []model.GrantInfo, excluded map[string]bool) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if excluded[g.ToRoleID] {

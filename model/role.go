@@ -7,8 +7,8 @@ type RoleNode struct {
 	Children   map[string]*RoleNode
 	Resources  map[string]bool
 	GrantedMap map[string]bool // 索引：精确资源键 → true，O(1) 查找
-	GrantsIn   []RoleGrant
-	GrantsOut  []RoleGrant
+	GrantsIn   []GrantInfo
+	GrantsOut  []GrantInfo
 	Users      map[string]*UserNode
 
 	matchCache map[string]bool // 匹配结果缓存（简化版 LRU）
@@ -38,8 +38,8 @@ func (r *RoleNode) ResetMatchCache() {
 	r.matchCache = nil
 }
 
-// RoleGrant 表示从祖先角色到子角色的显式资源授权记录。
-type RoleGrant struct {
+// GrantInfo 表示从祖先角色到子角色的显式资源授权记录。
+type GrantInfo struct {
 	FromRoleID string
 	ToRoleID   string
 	Resource   string
@@ -52,6 +52,6 @@ type RoleInfo struct {
 	Resources  []string
 	SubRoleIDs []string
 	UserIDs    []string
-	GrantsIn   []RoleGrant
-	GrantsOut  []RoleGrant
+	GrantsIn   []GrantInfo
+	GrantsOut  []GrantInfo
 }

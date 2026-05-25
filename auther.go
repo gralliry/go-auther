@@ -34,7 +34,7 @@ import (
 
 // 类型别名：外部只需 import "auther" 即可使用以下类型。
 type (
-	RoleGrant      = model.RoleGrant
+	GrantInfo      = model.GrantInfo
 	RoleInfo       = model.RoleInfo
 	UserInfo       = model.UserInfo
 	PolicySnapshot = model.PolicySnapshot
@@ -205,7 +205,7 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		}
 		seen[key] = true
 
-		grant := model.RoleGrant{FromRoleID: gs.FromRoleID, ToRoleID: gs.ToRoleID, Resource: gs.Resource}
+		grant := model.GrantInfo{FromRoleID: gs.FromRoleID, ToRoleID: gs.ToRoleID, Resource: gs.Resource}
 		fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 		toRole.GrantsIn = append(toRole.GrantsIn, grant)
 		toRole.GrantedMap[gs.Resource] = true

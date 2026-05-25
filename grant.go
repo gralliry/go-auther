@@ -51,7 +51,7 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 		}
 	}
 
-	grant := model.RoleGrant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource}
+	grant := model.GrantInfo{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource}
 	fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
 	toRole.GrantedMap[resource] = true
@@ -127,7 +127,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 }
 
 // removeSubtreeGrants 从授权列表中移除匹配子树集合中目标角色的所有授权。
-func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.RoleGrant {
+func removeSubtreeGrants(grants []model.GrantInfo, resource string, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if g.Resource == resource && subtreeSet[g.ToRoleID] {
@@ -146,7 +146,7 @@ func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet m
 }
 
 // hasGrantForResource 检查授权列表中是否存在指定资源的授权。
-func hasGrantForResource(grants []model.RoleGrant, resource string) bool {
+func hasGrantForResource(grants []model.GrantInfo, resource string) bool {
 	for _, g := range grants {
 		if g.Resource == resource {
 			return true
@@ -156,7 +156,7 @@ func hasGrantForResource(grants []model.RoleGrant, resource string) bool {
 }
 
 // removeGrantIn 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
-func removeGrantIn(grants []model.RoleGrant, fromRoleID, resource string) []model.RoleGrant {
+func removeGrantIn(grants []model.GrantInfo, fromRoleID, resource string) []model.GrantInfo {
 	for i, g := range grants {
 		if g.FromRoleID == fromRoleID && g.Resource == resource {
 			return append(grants[:i], grants[i+1:]...)
@@ -166,7 +166,7 @@ func removeGrantIn(grants []model.RoleGrant, fromRoleID, resource string) []mode
 }
 
 // GetGrantsToRole 返回指定角色接收到的所有授权记录（副本）。
-func (a *Authorizer) GetGrantsToRole(roleID string) ([]model.RoleGrant, error) {
+func (a *Authorizer) GetGrantsToRole(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -174,13 +174,13 @@ func (a *Authorizer) GetGrantsToRole(roleID string) ([]model.RoleGrant, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	result := make([]model.RoleGrant, len(role.GrantsIn))
+	result := make([]model.GrantInfo, len(role.GrantsIn))
 	copy(result, role.GrantsIn)
 	return result, nil
 }
 
 // GetGrantsFromRole 返回指定角色发出的所有授权记录（副本）。
-func (a *Authorizer) GetGrantsFromRole(roleID string) ([]model.RoleGrant, error) {
+func (a *Authorizer) GetGrantsFromRole(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -188,17 +188,17 @@ func (a *Authorizer) GetGrantsFromRole(roleID string) ([]model.RoleGrant, error)
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	result := make([]model.RoleGrant, len(role.GrantsOut))
+	result := make([]model.GrantInfo, len(role.GrantsOut))
 	copy(result, role.GrantsOut)
 	return result, nil
 }
 
 // GetAllGrants 返回系统中所有唯一的授权记录。
-func (a *Authorizer) GetAllGrants() []model.RoleGrant {
+func (a *Authorizer) GetAllGrants() []model.GrantInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var result []model.RoleGrant
+	var result []model.GrantInfo
 	seen := make(map[string]bool)
 	var walk func(role *model.RoleNode)
 	walk = func(role *model.RoleNode) {
