@@ -1,6 +1,6 @@
 package auther
 
-import "auther/snapshot"
+import "github.com/gralliry/go-auther/snapshot"
 
 // Adapter defines the persistence interface for Auther.
 //

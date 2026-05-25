@@ -3,7 +3,7 @@ package memoryadapter
 import (
 	"sync"
 
-	"auther/snapshot"
+	"github.com/gralliry/go-auther/snapshot"
 )
 
 // MemoryAdapter stores policy data in memory. Implements auther.Adapter.

@@ -1,10 +1,10 @@
-module auther/adapters/json
+module github.com/gralliry/go-auther/adapters/json
 
 go 1.26
 
 require (
-	auther v0.0.0
 	github.com/goccy/go-json v0.10.6
+	github.com/gralliry/go-auther v0.0.0
 )
 
-replace auther => ../../
+replace github.com/gralliry/go-auther => ../../

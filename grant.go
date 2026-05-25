@@ -3,9 +3,9 @@ package auther
 import (
 	"fmt"
 
-	"auther/internal/match"
+	"github.com/gralliry/go-auther/internal/match"
 
-	"auther/internal/model"
+	"github.com/gralliry/go-auther/internal/model"
 )
 
 // normalizeRes 调用 match.Clean 并封装错误为 ErrInvalidResource。

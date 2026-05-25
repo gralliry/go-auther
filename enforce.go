@@ -3,7 +3,7 @@ package auther
 import (
 	"fmt"
 
-	"auther/internal/match"
+	"github.com/gralliry/go-auther/internal/match"
 )
 
 // Enforce 检查用户是否有权限访问指定资源。

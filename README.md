@@ -1,13 +1,13 @@
 # Auther
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/gralliry/auther.svg)](https://pkg.go.dev/github.com/gralliry/auther)
+[![Go Reference](https://pkg.go.dev/badge/github.com/gralliry/go-auther.svg)](https://pkg.go.dev/github.com/gralliry/go-auther)
 
 Role-tree authorization library for Go. Explicit resource delegation with glob matching — no implicit inheritance.
 
 ## Installation
 
 ```sh
-go get github.com/gralliry/auther
+go get github.com/gralliry/go-auther
 ```
 
 ## Quick start
@@ -17,7 +17,7 @@ package main
 
 import (
     "fmt"
-    "github.com/gralliry/auther"
+    "github.com/gralliry/go-auther"
 )
 
 func main() {
@@ -134,7 +134,7 @@ type Adapter interface {
 **Memory** (testing / dev):
 
 ```go
-import memoryadapter "github.com/gralliry/auther/adapters/memory"
+import memoryadapter "github.com/gralliry/go-auther/adapters/memory"
 
 a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
 ```
@@ -142,7 +142,7 @@ a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
 **JSON** (file-backed, atomic writes):
 
 ```go
-import jsonadapter "github.com/gralliry/auther/adapters/json"
+import jsonadapter "github.com/gralliry/go-auther/adapters/json"
 
 a, _ := auther.NewAuthorizer(jsonadapter.NewJSONAdapter("/path/to/policy.json"))
 ```
@@ -153,7 +153,7 @@ a, _ := auther.NewAuthorizer(jsonadapter.NewJSONAdapter("/path/to/policy.json"))
 import (
     "database/sql"
     _ "github.com/go-sql-driver/mysql" // or lib/pq, modernc.org/sqlite, etc.
-    sqladapter "github.com/gralliry/auther/adapters/sql"
+    sqladapter "github.com/gralliry/go-auther/adapters/sql"
 )
 
 db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")

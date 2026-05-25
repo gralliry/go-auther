@@ -3,7 +3,7 @@ package auther
 import (
 	"fmt"
 
-	"auther/internal/model"
+	"github.com/gralliry/go-auther/internal/model"
 )
 
 // RoleInfo 是对外暴露的角色信息视图。

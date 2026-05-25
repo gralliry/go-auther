@@ -1,11 +1,11 @@
-module auther/adapters/sql
+module github.com/gralliry/go-auther/adapters/sql
 
 go 1.26
 
-replace auther => ../../
+replace github.com/gralliry/go-auther => ../../
 
 require (
-	auther v0.0.0
+	github.com/gralliry/go-auther v0.0.0
 	modernc.org/sqlite v1.50.1
 )
 

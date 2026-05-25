@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"sync"
 
-	"auther/internal/model"
-	"auther/snapshot"
+	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/snapshot"
 )
 
 // GrantInfo 通过别名暴露给外部使用。

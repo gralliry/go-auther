@@ -1,7 +1,7 @@
-module auther/adapters/memory
+module github.com/gralliry/go-auther/adapters/memory
 
 go 1.26
 
-require auther v0.0.0
+require github.com/gralliry/go-auther v0.0.0
 
-replace auther => ../../
+replace github.com/gralliry/go-auther => ../../

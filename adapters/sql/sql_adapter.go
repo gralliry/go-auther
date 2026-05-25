@@ -8,7 +8,7 @@
 //	import (
 //	    "database/sql"
 //	    _ "github.com/go-sql-driver/mysql"
-//	    sqladapter "github.com/gralliry/auther/adapters/sql"
+//	    sqladapter "github.com/gralliry/go-auther/adapters/sql"
 //	)
 //
 //	db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")
@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"auther/snapshot"
+	"github.com/gralliry/go-auther/snapshot"
 )
 
 var validTableRE = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)

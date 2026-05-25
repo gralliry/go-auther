@@ -3,7 +3,7 @@ package auther
 import (
 	"fmt"
 
-	"auther/internal/model"
+	"github.com/gralliry/go-auther/internal/model"
 )
 
 // UserInfo 是对外暴露的用户信息视图。

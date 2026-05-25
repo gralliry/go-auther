@@ -12,7 +12,7 @@ import (
 
 	"github.com/goccy/go-json"
 
-	"auther/snapshot"
+	"github.com/gralliry/go-auther/snapshot"
 )
 
 // JSONAdapter is a JSON file-backed adapter for Auther policy persistence.
