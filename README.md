@@ -89,7 +89,7 @@ When `fromRoleID == toRoleID`, the resource is added directly to the role (self-
 func (a *Authorizer) CreateUser(roleID, userID string) error
 func (a *Authorizer) DeleteUser(userID string) error
 func (a *Authorizer) GetUser(userID string) (*UserInfo, error)
-func (a *Authorizer) Users() []*UserInfo
+func (a *Authorizer) GetUsers() []*UserInfo
 ```
 
 ### Enforcement
