@@ -154,7 +154,7 @@ Resources follow filesystem-path semantics with two wildcards:
 | `/data/**` | Zero or more segments: `/data`, `/data/a/b/c` |
 | `/**` | Everything |
 
-Matching uses a bottom-up DP algorithm. Segment parsing avoids string allocation for fast matching in hot enforcement paths.
+Matching uses an iterative backtracking algorithm with zero heap allocation for fast matching in hot enforcement paths.
 
 ## Persistence
 
@@ -212,24 +212,24 @@ The cleansed snapshot is written back automatically.
 
 ## Performance
 
-Benchmarks on the enforcement hot path (measured with `b.Loop()`):
+Benchmarks on the enforcement hot path:
 
 | Scenario | Time |
 |---|---|
-| Exact match | ~135 ns |
-| Wildcard hit | ~132 ns |
-| Grant-based hit | ~262 ns |
-| Literal miss (no wildcards) | ~148 ns |
-| Full scan miss | ~158 ns |
+| Exact match | ~39 ns |
+| Wildcard hit | ~44 ns |
+| Grant-based hit | ~49 ns |
+| Literal miss (no wildcards) | ~40 ns |
+| Full scan miss | ~47 ns |
 
 Resource matching benchmarks:
 
 | Case | Time |
 |---|---|
-| Exact match | ~1.4 ns |
-| Literal miss | ~4 ns |
-| Single wildcard | ~143 ns |
-| Double wildcard deep | ~220 ns |
+| Exact match | ~1.6 ns |
+| Literal miss | ~4.6 ns |
+| Single wildcard | ~40 ns |
+| Double wildcard deep | ~71 ns |
 
 ## Thread safety
 
