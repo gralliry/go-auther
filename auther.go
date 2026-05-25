@@ -37,8 +37,6 @@ type (
 	RoleGrant      = model.RoleGrant
 	RoleInfo       = model.RoleInfo
 	UserInfo       = model.UserInfo
-	RoleNode       = model.RoleNode
-	UserNode       = model.UserNode
 	PolicySnapshot = model.PolicySnapshot
 	RoleSnapshot   = model.RoleSnapshot
 	UserSnapshot   = model.UserSnapshot
