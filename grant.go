@@ -104,15 +104,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 			break
 		}
 	}
-	// 检查是否还有同资源的其他授权
-	stillHas := false
-	for _, g := range toRole.GrantsIn {
-		if g.Resource == resource {
-			stillHas = true
-			break
-		}
-	}
-	if !stillHas {
+	if !hasGrantForResource(toRole.GrantsIn, resource) {
 		delete(toRole.GrantedMap, resource)
 	}
 	if !found {
@@ -141,15 +133,7 @@ func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet m
 		if g.Resource == resource && subtreeSet[g.ToRoleID] {
 			if grantee := roles[g.ToRoleID]; grantee != nil {
 				grantee.GrantsIn = removeGrantIn(grantee.GrantsIn, g.FromRoleID, resource)
-				// 检查是否还有同资源的其他授权
-				stillHas := false
-				for _, gr := range grantee.GrantsIn {
-					if gr.Resource == resource {
-						stillHas = true
-						break
-					}
-				}
-				if !stillHas {
+				if !hasGrantForResource(grantee.GrantsIn, resource) {
 					delete(grantee.GrantedMap, resource)
 				}
 				grantee.ResetMatchCache()
@@ -159,6 +143,16 @@ func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet m
 		out = append(out, g)
 	}
 	return out
+}
+
+// hasGrantForResource 检查授权列表中是否存在指定资源的授权。
+func hasGrantForResource(grants []model.RoleGrant, resource string) bool {
+	for _, g := range grants {
+		if g.Resource == resource {
+			return true
+		}
+	}
+	return false
 }
 
 // removeGrantIn 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
