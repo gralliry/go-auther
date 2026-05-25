@@ -24,14 +24,30 @@ func NewResource(raw string) (Resource, error) {
 
 // Match 判断 target 是否匹配此资源模式，零堆分配。
 func (r Resource) Match(target string) bool {
-	p := string(r)
-	if p == target {
+	if string(r) == target {
 		return true
 	}
 	if !r.HasWildcard() {
 		return false
 	}
+	return matchGlob(string(r), target)
+}
 
+// HasWildcard 判断此模式是否包含 '*' 通配符。
+func (r Resource) HasWildcard() bool {
+	for i := 0; i < len(r); i++ {
+		if r[i] == '*' {
+			return true
+		}
+	}
+	return false
+}
+
+// String 返回规范化后的路径字符串。
+func (r Resource) String() string { return string(r) }
+
+// matchGlob 分段迭代匹配。* 匹配单段，** 匹配零或多段。
+func matchGlob(p, t string) bool {
 	pi, ti := 0, 0
 	starPi, starTi := noStar, noStar
 
@@ -39,33 +55,23 @@ func (r Resource) Match(target string) bool {
 		for pi < len(p) && p[pi] == '/' {
 			pi++
 		}
-		for ti < len(target) && target[ti] == '/' {
+		for ti < len(t) && t[ti] == '/' {
 			ti++
 		}
 
-		if pi >= len(p) && ti >= len(target) {
+		if pi >= len(p) && ti >= len(t) {
 			return true
 		}
 
 		if pi >= len(p) {
-			if !backtrackStar(&pi, &ti, starPi, &starTi, target) {
+			if !backtrackStar(&pi, &ti, starPi, &starTi, t) {
 				return false
 			}
 			continue
 		}
 
-		if ti >= len(target) {
-			// 目标耗尽，剩余模式只能包含 '/' 和 **。
-			for pi < len(p) {
-				if p[pi] == '/' {
-					pi++
-				} else if p[pi] == '*' && pi+1 < len(p) && p[pi+1] == '*' {
-					pi += 2
-				} else {
-					return false
-				}
-			}
-			return true
+		if ti >= len(t) {
+			return tailGlobStar(p, pi)
 		}
 
 		ps := pi
@@ -80,16 +86,16 @@ func (r Resource) Match(target string) bool {
 		}
 
 		ts := ti
-		for ti < len(target) && target[ti] != '/' {
+		for ti < len(t) && t[ti] != '/' {
 			ti++
 		}
-		tSeg := target[ts:ti]
+		tSeg := t[ts:ti]
 
 		if pSeg == "*" || pSeg == tSeg {
 			continue
 		}
 
-		if !backtrackStar(&pi, &ti, starPi, &starTi, target) {
+		if !backtrackStar(&pi, &ti, starPi, &starTi, t) {
 			return false
 		}
 	}
@@ -112,15 +118,18 @@ func backtrackStar(pi, ti *int, starPi int, starTi *int, t string) bool {
 	return true
 }
 
-// HasWildcard 判断此模式是否包含 '*' 通配符。
-func (r Resource) HasWildcard() bool {
-	for i := 0; i < len(r); i++ {
-		if r[i] == '*' {
-			return true
+// tailGlobStar 检查 pattern 剩余部分是否只包含 '/' 和通配符。
+func tailGlobStar(p string, pi int) bool {
+	for pi < len(p) {
+		if p[pi] == '/' {
+			pi++
+			continue
 		}
+		if p[pi] == '*' && pi+1 < len(p) && p[pi+1] == '*' {
+			pi += 2
+			continue
+		}
+		return false
 	}
-	return false
+	return true
 }
-
-// String 返回规范化后的路径字符串。
-func (r Resource) String() string { return string(r) }
