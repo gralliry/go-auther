@@ -117,41 +117,27 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool, err error)
 			Users:      make(map[string]*model.UserNode),
 		}
 	}
-
-	var rootID string
-	for _, rs := range roles {
-		if rs.ParentID == "" {
-			rootID = rs.ID
-			break
-		}
-	}
-	if rootID == "" {
+	if a.roles["root"] == nil {
 		cleansed = true
-		rootID = "root"
-		if a.roles["root"] == nil {
-			a.roles["root"] = &model.RoleNode{
-				ID:         "root",
-				Children:   make(map[string]*model.RoleNode),
-				GrantedMap: map[string]bool{"/**": true},
-				Users:      make(map[string]*model.UserNode),
-			}
+		a.roles["root"] = &model.RoleNode{
+			ID:         "root",
+			Children:   make(map[string]*model.RoleNode),
+			GrantedMap: map[string]bool{"/**": true},
+			Users:      make(map[string]*model.UserNode),
 		}
 	}
-	a.root = a.roles[rootID]
+	a.root = a.roles["root"]
 
 	for _, rs := range roles {
-		if rs.ID == rootID {
-			continue
-		}
-		role := a.roles[rs.ID]
-		if role == nil {
+		if rs.ID == "root" {
 			continue
 		}
 		parent := a.roles[rs.ParentID]
-		if parent == nil || rs.ParentID == "" {
+		if parent == nil {
 			cleansed = true
 			parent = a.root
 		}
+		role := a.roles[rs.ID]
 		role.Parent = parent
 		parent.Children[rs.ID] = role
 	}
