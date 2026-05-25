@@ -6,7 +6,7 @@
 //
 //   - 角色（Role）：形成树形层级结构。根角色在初始化时自动创建，
 //     并默认拥有 "/**" 资源权限。角色可以创建子角色和用户。
-//     权限不会自动继承 —— 父角色必须显式调用 GrantResource 向子角色授权。
+//     权限不会自动继承 —— 父角色必须显式调用 Grant 向子角色授权。
 //
 //   - 用户（User）：由角色创建的被动叶子节点。用户继承其所属角色的
 //     有效权限，但不能管理资源或创建其他用户/角色。
@@ -161,7 +161,7 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 	}
 
 	// 检测是否存在循环层级关系。
-	if err := a.checkNoCycle(); err != nil {
+	if err := a.checkCycle(); err != nil {
 		return err
 	}
 
@@ -213,15 +213,15 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 
 	// 仅在确实清理了数据且存在适配器时才写回持久化存储。
 	if cleansed && a.adapter != nil {
-		if err := a.adapter.Save(a.toSnapshot()); err != nil {
+		if err := a.adapter.Save(a.snapshot()); err != nil {
 			return fmt.Errorf("auther: persist cleansed state: %w", err)
 		}
 	}
 	return nil
 }
 
-// toSnapshot 将当前内存中的角色树转换为可序列化的策略快照。
-func (a *Authorizer) toSnapshot() *model.PolicySnapshot {
+// snapshot 将当前内存中的角色树转换为可序列化的策略快照。
+func (a *Authorizer) snapshot() *model.PolicySnapshot {
 	snap := &model.PolicySnapshot{}
 
 	var walk func(role *model.RoleNode)
@@ -272,11 +272,11 @@ func (a *Authorizer) save() error {
 	if a.adapter == nil {
 		return nil
 	}
-	return a.adapter.Save(a.toSnapshot())
+	return a.adapter.Save(a.snapshot())
 }
 
-// collectSubtree 收集指定角色及其所有后代角色，使用 BFS 遍历。
-func (a *Authorizer) collectSubtree(roleID string) []*model.RoleNode {
+// subtree 收集指定角色及其所有后代角色，使用 BFS 遍历。
+func (a *Authorizer) subtree(roleID string) []*model.RoleNode {
 	role := a.roles[roleID]
 	if role == nil {
 		return nil
@@ -320,8 +320,8 @@ func (a *Authorizer) isAncestorOrSelf(aID, dID string) bool {
 	return aID == dID || a.isAncestor(aID, dID)
 }
 
-// checkNoCycle 使用 Floyd 快慢指针算法检测角色树中是否存在循环引用。
-func (a *Authorizer) checkNoCycle() error {
+// checkCycle 使用 Floyd 快慢指针算法检测角色树中是否存在循环引用。
+func (a *Authorizer) checkCycle() error {
 	for _, role := range a.roles {
 		slow, fast := role, role
 		for fast != nil && fast.Parent != nil {

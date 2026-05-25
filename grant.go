@@ -7,14 +7,25 @@ import (
 	"auther/model"
 )
 
-// GrantResource 将资源授权给指定角色。
+// normalizeRes 校验并规范化资源路径。
+func normalizeRes(resource string) (string, error) {
+	if resource == "" {
+		return "", fmt.Errorf("%w: resource must not be empty", ErrInvalidResource)
+	}
+	if resource[0] != '/' {
+		return "", fmt.Errorf("%w: resource must start with '/'", ErrInvalidResource)
+	}
+	return path.Clean(resource), nil
+}
+
+// Grant 将资源授权给指定角色。
 //
 // 当 fromRoleID == toRoleID 时，资源直接添加到该角色自身的资源列表中。
 // 否则，从祖先角色向子角色进行授权委托，形成一条授权记录。
 // 授权方必须是接收方的祖先角色，否则返回 ErrNotAncestor。
-func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error {
+func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	var err error
-	resource, err = normalizeResource(resource)
+	resource, err = normalizeRes(resource)
 	if err != nil {
 		return err
 	}
@@ -60,20 +71,20 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 	return a.save()
 }
 
-// RevokeResource 撤销一条授权，并级联删除该子树中所有相同资源的子授权。
-func (a *Authorizer) RevokeResource(fromRoleID, toRoleID, resource string) error {
+// Revoke 撤销一条授权，并级联删除该子树中所有相同资源的子授权。
+func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error {
 	var err error
-	resource, err = normalizeResource(resource)
+	resource, err = normalizeRes(resource)
 	if err != nil {
 		return err
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.revokeResourceLocked(fromRoleID, toRoleID, resource)
+	return a.revokeLocked(fromRoleID, toRoleID, resource)
 }
 
-// revokeResourceLocked 在持有锁的情况下执行撤销逻辑。
-func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string) error {
+// revokeLocked 在持有锁的情况下执行撤销逻辑。
+func (a *Authorizer) revokeLocked(fromRoleID, toRoleID, resource string) error {
 	fromRole := a.roles[fromRoleID]
 	toRole := a.roles[toRoleID]
 	if fromRole == nil || toRole == nil {
@@ -105,7 +116,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 			break
 		}
 	}
-	if !hasGrantForResource(toRole.GrantsIn, resource) {
+	if !hasGrant(toRole.GrantsIn, resource) {
 		delete(toRole.GrantedMap, resource)
 	}
 	if !found {
@@ -115,26 +126,26 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 	toRole.ResetMatchCache()
 
 	// 级联清理：删除子树中所有针对同一资源的子授权。
-	subtree := a.collectSubtree(toRoleID)
+	subtree := a.subtree(toRoleID)
 	subtreeSet := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
 		subtreeSet[r.ID] = true
 	}
 	for _, r := range subtree {
-		r.GrantsOut = removeSubtreeGrants(r.GrantsOut, resource, subtreeSet, a.roles)
+		r.GrantsOut = removeGrants(r.GrantsOut, resource, subtreeSet, a.roles)
 		r.ResetMatchCache()
 	}
 	return a.save()
 }
 
-// removeSubtreeGrants 从授权列表中移除匹配子树集合中目标角色的所有授权。
-func removeSubtreeGrants(grants []model.GrantInfo, resource string, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.GrantInfo {
+// removeGrants 从授权列表中移除匹配子树集合中目标角色的所有授权。
+func removeGrants(grants []model.GrantInfo, resource string, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if g.Resource == resource && subtreeSet[g.ToRoleID] {
 			if grantee := roles[g.ToRoleID]; grantee != nil {
-				grantee.GrantsIn = removeGrantIn(grantee.GrantsIn, g.FromRoleID, resource)
-				if !hasGrantForResource(grantee.GrantsIn, resource) {
+				grantee.GrantsIn = delGrant(grantee.GrantsIn, g.FromRoleID, resource)
+				if !hasGrant(grantee.GrantsIn, resource) {
 					delete(grantee.GrantedMap, resource)
 				}
 				grantee.ResetMatchCache()
@@ -146,8 +157,8 @@ func removeSubtreeGrants(grants []model.GrantInfo, resource string, subtreeSet m
 	return out
 }
 
-// hasGrantForResource 检查授权列表中是否存在指定资源的授权。
-func hasGrantForResource(grants []model.GrantInfo, resource string) bool {
+// hasGrant 检查授权列表中是否存在指定资源的授权。
+func hasGrant(grants []model.GrantInfo, resource string) bool {
 	for _, g := range grants {
 		if g.Resource == resource {
 			return true
@@ -156,8 +167,8 @@ func hasGrantForResource(grants []model.GrantInfo, resource string) bool {
 	return false
 }
 
-// removeGrantIn 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
-func removeGrantIn(grants []model.GrantInfo, fromRoleID, resource string) []model.GrantInfo {
+// delGrant 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
+func delGrant(grants []model.GrantInfo, fromRoleID, resource string) []model.GrantInfo {
 	for i, g := range grants {
 		if g.FromRoleID == fromRoleID && g.Resource == resource {
 			return append(grants[:i], grants[i+1:]...)
@@ -166,8 +177,8 @@ func removeGrantIn(grants []model.GrantInfo, fromRoleID, resource string) []mode
 	return grants
 }
 
-// GetGrantsToRole 返回指定角色接收到的所有授权记录（副本）。
-func (a *Authorizer) GetGrantsToRole(roleID string) ([]model.GrantInfo, error) {
+// GrantsTo 返回指定角色接收到的所有授权记录（副本）。
+func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -180,8 +191,8 @@ func (a *Authorizer) GetGrantsToRole(roleID string) ([]model.GrantInfo, error) {
 	return result, nil
 }
 
-// GetGrantsFromRole 返回指定角色发出的所有授权记录（副本）。
-func (a *Authorizer) GetGrantsFromRole(roleID string) ([]model.GrantInfo, error) {
+// GrantsFrom 返回指定角色发出的所有授权记录（副本）。
+func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -194,8 +205,8 @@ func (a *Authorizer) GetGrantsFromRole(roleID string) ([]model.GrantInfo, error)
 	return result, nil
 }
 
-// GetAllGrants 返回系统中所有唯一的授权记录。
-func (a *Authorizer) GetAllGrants() []model.GrantInfo {
+// AllGrants 返回系统中所有唯一的授权记录。
+func (a *Authorizer) AllGrants() []model.GrantInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -216,15 +227,4 @@ func (a *Authorizer) GetAllGrants() []model.GrantInfo {
 	}
 	walk(a.root)
 	return result
-}
-
-// normalizeResource 校验并规范化资源路径。
-func normalizeResource(resource string) (string, error) {
-	if resource == "" {
-		return "", fmt.Errorf("%w: resource must not be empty", ErrInvalidResource)
-	}
-	if resource[0] != '/' {
-		return "", fmt.Errorf("%w: resource must start with '/'", ErrInvalidResource)
-	}
-	return path.Clean(resource), nil
 }

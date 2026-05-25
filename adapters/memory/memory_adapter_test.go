@@ -19,7 +19,7 @@ func TestMemoryAdapterRoundTrip(t *testing.T) {
 	// Set up roles and users
 	must(t, a1.CreateRole("root", "editor"))
 	must(t, a1.CreateUser("editor", "u1"))
-	must(t, a1.GrantResource("root", "editor", "/data/*"))
+	must(t, a1.Grant("root", "editor", "/data/*"))
 
 	// Verify state persisted
 	a2, err := auther.NewAuthorizer(adapter)
@@ -46,7 +46,7 @@ func TestMemoryAdapterRoundTrip(t *testing.T) {
 		t.Error("user should have /data/* from grant")
 	}
 
-	grants := a2.GetAllGrants()
+	grants := a2.AllGrants()
 	if len(grants) != 1 {
 		t.Errorf("expected 1 grant, got %d", len(grants))
 	}

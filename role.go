@@ -51,7 +51,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	}
 
 	// 收集待删除的子树，同时清理子角色中的用户。
-	subtree := a.collectSubtree(roleID)
+	subtree := a.subtree(roleID)
 	subtreeSet := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
 		subtreeSet[r.ID] = true
@@ -68,8 +68,8 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		if subtreeSet[r.ID] {
 			continue
 		}
-		r.GrantsIn = filterGrantsByFrom(r.GrantsIn, subtreeSet)
-		r.GrantsOut = filterGrantsByTo(r.GrantsOut, subtreeSet)
+		r.GrantsIn = filterByFrom(r.GrantsIn, subtreeSet)
+		r.GrantsOut = filterByTo(r.GrantsOut, subtreeSet)
 	}
 
 	// 重建幸存角色的 GrantedMap，并清空匹配缓存。
@@ -109,8 +109,8 @@ func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
 	return roleToInfo(role), nil
 }
 
-// GetAllRoles 返回系统中所有角色的信息列表。
-func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
+// Roles 返回系统中所有角色的信息列表。
+func (a *Authorizer) Roles() []*model.RoleInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -126,9 +126,9 @@ func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
 	return result
 }
 
-// GetEffectiveRoleResources 返回角色当前生效的所有资源权限模式。
+// RoleResources 返回角色当前生效的所有资源权限模式。
 // 包含角色自身资源和显式的 GrantsIn，不包含自动继承。
-func (a *Authorizer) GetEffectiveRoleResources(roleID string) ([]string, error) {
+func (a *Authorizer) RoleResources(roleID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -180,8 +180,8 @@ func roleToInfo(role *model.RoleNode) *model.RoleInfo {
 	return info
 }
 
-// filterGrantsByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
-func filterGrantsByFrom(grants []model.GrantInfo, excluded map[string]bool) []model.GrantInfo {
+// filterByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
+func filterByFrom(grants []model.GrantInfo, excluded map[string]bool) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if excluded[g.FromRoleID] {
@@ -192,8 +192,8 @@ func filterGrantsByFrom(grants []model.GrantInfo, excluded map[string]bool) []mo
 	return out
 }
 
-// filterGrantsByTo 过滤掉 ToRoleID 在排除集合中的授权记录。
-func filterGrantsByTo(grants []model.GrantInfo, excluded map[string]bool) []model.GrantInfo {
+// filterByTo 过滤掉 ToRoleID 在排除集合中的授权记录。
+func filterByTo(grants []model.GrantInfo, excluded map[string]bool) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if excluded[g.ToRoleID] {

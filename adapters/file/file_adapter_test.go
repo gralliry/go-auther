@@ -20,9 +20,9 @@ func TestFileAdapterRoundTrip(t *testing.T) {
 
 	must(t, a1.CreateRole("root", "admin"))
 	must(t, a1.CreateRole("admin", "editor"))
-	must(t, a1.GrantResource("admin", "admin", "/user/*"))
-	must(t, a1.GrantResource("editor", "editor", "/data/*"))
-	must(t, a1.GrantResource("root", "admin", "/g/**"))
+	must(t, a1.Grant("admin", "admin", "/user/*"))
+	must(t, a1.Grant("editor", "editor", "/data/*"))
+	must(t, a1.Grant("root", "admin", "/g/**"))
 	must(t, a1.CreateUser("editor", "editor_user"))
 
 	// Reload from file
@@ -39,7 +39,7 @@ func TestFileAdapterRoundTrip(t *testing.T) {
 		t.Errorf("expected role editor, got %s", u.RoleID)
 	}
 
-	grants := a2.GetAllGrants()
+	grants := a2.AllGrants()
 	if len(grants) != 1 {
 		t.Errorf("expected 1 grant, got %d", len(grants))
 	}

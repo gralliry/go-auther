@@ -35,9 +35,9 @@ func setupTestHierarchy(t *testing.T, a *Authorizer) {
 
 	must(t, a.CreateRole("root", "admin"))
 	must(t, a.CreateRole("admin", "editor"))
-	must(t, a.GrantResource("admin", "admin", "/user/*"))
-	must(t, a.GrantResource("editor", "editor", "/data/*"))
-	must(t, a.GrantResource("root", "admin", "/g/**"))
+	must(t, a.Grant("admin", "admin", "/user/*"))
+	must(t, a.Grant("editor", "editor", "/data/*"))
+	must(t, a.Grant("root", "admin", "/g/**"))
 	must(t, a.CreateUser("admin", "u_admin"))
 	must(t, a.CreateUser("editor", "u_editor"))
 }
@@ -131,7 +131,7 @@ func TestCreateRoleDeepNesting(t *testing.T) {
 	// Can create a sibling under grandparent (parent of parent)
 	must(t, a.CreateRole("grandparent", "uncle"))
 
-	roles := a.GetAllRoles()
+	roles := a.Roles()
 	if len(roles) != 5 { // root, grandparent, parent, child, uncle
 		t.Errorf("expected 5 roles, got %d", len(roles))
 	}
@@ -146,8 +146,8 @@ func TestDeleteRoleCascade(t *testing.T) {
 	must(t, a.CreateUser("sub_editor", "u_sub"))
 
 	// Grant something through the chain
-	must(t, a.GrantResource("admin", "editor", "/shared/*"))
-	must(t, a.GrantResource("editor", "sub_editor", "/shared/*"))
+	must(t, a.Grant("admin", "editor", "/shared/*"))
+	must(t, a.Grant("editor", "sub_editor", "/shared/*"))
 
 	// Delete admin -> cascades to editor, sub_editor, and all their users
 	must(t, a.DeleteRole("admin"))
@@ -187,7 +187,7 @@ func TestDeleteRoleCascade(t *testing.T) {
 	}
 
 	// No grants should remain
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 0 {
 		t.Errorf("expected 0 grants, got %d: %+v", len(grants), grants)
 	}
@@ -209,7 +209,7 @@ func TestDeleteRootRoleForbidden(t *testing.T) {
 func TestAddRemoveResourceToRole(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	must(t, a.GrantResource("root", "root", "/extra/**"))
+	must(t, a.Grant("root", "root", "/extra/**"))
 
 	role, _ := a.GetRole("root")
 	found := false
@@ -223,7 +223,7 @@ func TestAddRemoveResourceToRole(t *testing.T) {
 		t.Error("expected /extra/** in root resources")
 	}
 
-	must(t, a.RevokeResource("root", "root", "/extra/**"))
+	must(t, a.Revoke("root", "root", "/extra/**"))
 
 	role, _ = a.GetRole("root")
 	for _, r := range role.Resources {
@@ -233,7 +233,7 @@ func TestAddRemoveResourceToRole(t *testing.T) {
 	}
 
 	// Remove non-existent resource
-	err := a.RevokeResource("root", "root", "/nonexistent")
+	err := a.Revoke("root", "root", "/nonexistent")
 	if !errors.Is(err, ErrGrantNotFound) {
 		t.Errorf("expected ErrGrantNotFound, got %v", err)
 	}
@@ -243,13 +243,13 @@ func TestAddRemoveResourceToRole(t *testing.T) {
 // Grant tests
 // =============================================================================
 
-func TestGrantResource(t *testing.T) {
+func TestGrant(t *testing.T) {
 	a := newTestAuthorizer(t)
 
 	must(t, a.CreateRole("root", "child"))
-	must(t, a.GrantResource("root", "child", "/custom/*"))
+	must(t, a.Grant("root", "child", "/custom/*"))
 
-	grantsFrom, _ := a.GetGrantsFromRole("root")
+	grantsFrom, _ := a.GrantsFrom("root")
 	if len(grantsFrom) != 1 {
 		t.Fatalf("expected 1 grant from root, got %d", len(grantsFrom))
 	}
@@ -257,42 +257,42 @@ func TestGrantResource(t *testing.T) {
 		t.Errorf("expected /custom/*, got %s", grantsFrom[0].Resource)
 	}
 
-	grantsTo, _ := a.GetGrantsToRole("child")
+	grantsTo, _ := a.GrantsTo("child")
 	if len(grantsTo) != 1 {
 		t.Fatalf("expected 1 grant to child, got %d", len(grantsTo))
 	}
 }
 
-func TestGrantResourceNotAncestor(t *testing.T) {
+func TestGrantNotAncestor(t *testing.T) {
 	a := newTestAuthorizer(t)
 
 	must(t, a.CreateRole("root", "role_a"))
 	must(t, a.CreateRole("root", "role_b"))
 
 	// role_a is not an ancestor of role_b
-	err := a.GrantResource("role_a", "role_b", "/x")
+	err := a.Grant("role_a", "role_b", "/x")
 	if !errors.Is(err, ErrNotAncestor) {
 		t.Errorf("expected ErrNotAncestor, got %v", err)
 	}
 }
 
-func TestGrantResourceDuplicate(t *testing.T) {
+func TestGrantDuplicate(t *testing.T) {
 	a := newTestAuthorizer(t)
 
 	must(t, a.CreateRole("root", "child"))
-	must(t, a.GrantResource("root", "child", "/dup"))
+	must(t, a.Grant("root", "child", "/dup"))
 
-	err := a.GrantResource("root", "child", "/dup")
+	err := a.Grant("root", "child", "/dup")
 	if !errors.Is(err, ErrDuplicateGrant) {
 		t.Errorf("expected ErrDuplicateGrant, got %v", err)
 	}
 }
 
-func TestGrantResourceSelf(t *testing.T) {
+func TestGrantSelf(t *testing.T) {
 	a := newTestAuthorizer(t)
 
 	// Self-grant adds directly to role's own Resources, not as a Grant record
-	must(t, a.GrantResource("root", "root", "/self/**"))
+	must(t, a.Grant("root", "root", "/self/**"))
 
 	role, _ := a.GetRole("root")
 	found := false
@@ -307,13 +307,13 @@ func TestGrantResourceSelf(t *testing.T) {
 	}
 
 	// No grant record should exist for self-grant
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 0 {
 		t.Errorf("expected 0 grants for self-grant, got %d", len(grants))
 	}
 
 	// Revoke works
-	must(t, a.RevokeResource("root", "root", "/self/**"))
+	must(t, a.Revoke("root", "root", "/self/**"))
 	role, _ = a.GetRole("root")
 	for _, r := range role.Resources {
 		if r == "/self/**" {
@@ -322,18 +322,18 @@ func TestGrantResourceSelf(t *testing.T) {
 	}
 }
 
-func TestRevokeResourceCascade(t *testing.T) {
+func TestRevokeCascade(t *testing.T) {
 	a := newTestAuthorizer(t)
 	setupTestHierarchy(t, a)
 
 	// Grant chain: root -> admin -> editor
-	must(t, a.GrantResource("admin", "editor", "/reports/*"))
+	must(t, a.Grant("admin", "editor", "/reports/*"))
 
 	// Revoke at the top
-	must(t, a.RevokeResource("root", "admin", "/g/**"))
+	must(t, a.Revoke("root", "admin", "/g/**"))
 
 	// Check that the grant is gone
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	for _, g := range grants {
 		if g.Resource == "/g/**" {
 			t.Errorf("grant still exists: %+v", g)
@@ -341,21 +341,21 @@ func TestRevokeResourceCascade(t *testing.T) {
 	}
 }
 
-func TestRevokeResourceCascadeDeep(t *testing.T) {
+func TestRevokeCascadeDeep(t *testing.T) {
 	a := newTestAuthorizer(t)
 
 	must(t, a.CreateRole("root", "r1"))
 	must(t, a.CreateRole("r1", "r2"))
 	must(t, a.CreateRole("r2", "r3"))
 
-	must(t, a.GrantResource("root", "r1", "/reports"))
-	must(t, a.GrantResource("r1", "r2", "/reports"))
-	must(t, a.GrantResource("r2", "r3", "/reports"))
+	must(t, a.Grant("root", "r1", "/reports"))
+	must(t, a.Grant("r1", "r2", "/reports"))
+	must(t, a.Grant("r2", "r3", "/reports"))
 
 	// Revoke at r1; should cascade to r2 and r3
-	must(t, a.RevokeResource("root", "r1", "/reports"))
+	must(t, a.Revoke("root", "r1", "/reports"))
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	for _, g := range grants {
 		if g.Resource == "/reports" {
 			t.Errorf("grant on /reports still exists: %+v", g)
@@ -457,7 +457,7 @@ func TestEnforceWithGrants(t *testing.T) {
 	}
 
 	// Grant /user/* from admin to editor
-	must(t, a.GrantResource("admin", "editor", "/user/*"))
+	must(t, a.Grant("admin", "editor", "/user/*"))
 
 	// Now editor should have it
 	ok, _ = a.Enforce("u_editor", "/user/create")
@@ -475,13 +475,13 @@ func TestEnforceNonExistentUser(t *testing.T) {
 	}
 }
 
-func TestGetUserPermissions(t *testing.T) {
+func TestPermissions(t *testing.T) {
 	a := newTestAuthorizer(t)
 	setupTestHierarchy(t, a)
 
-	must(t, a.GrantResource("admin", "editor", "/extra/**"))
+	must(t, a.Grant("admin", "editor", "/extra/**"))
 
-	perms, err := a.GetUserPermissions("u_editor")
+	perms, err := a.Permissions("u_editor")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,34 +505,34 @@ func TestGetUserPermissions(t *testing.T) {
 }
 
 // =============================================================================
-// GetAll tests
+// List-all tests
 // =============================================================================
 
-func TestGetAllRoles(t *testing.T) {
+func TestRoles(t *testing.T) {
 	a := newTestAuthorizer(t)
 	setupTestHierarchy(t, a)
 
-	roles := a.GetAllRoles()
+	roles := a.Roles()
 	if len(roles) != 3 { // root, admin, editor
 		t.Errorf("expected 3 roles, got %d", len(roles))
 	}
 }
 
-func TestGetAllUsers(t *testing.T) {
+func TestUsers(t *testing.T) {
 	a := newTestAuthorizer(t)
 	setupTestHierarchy(t, a)
 
-	users := a.GetAllUsers()
+	users := a.Users()
 	if len(users) != 2 {
 		t.Errorf("expected 2 users, got %d", len(users))
 	}
 }
 
-func TestGetAllGrants(t *testing.T) {
+func TestAllGrants(t *testing.T) {
 	a := newTestAuthorizer(t)
 	setupTestHierarchy(t, a)
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 1 {
 		t.Errorf("expected 1 grant, got %d", len(grants))
 	}
@@ -547,7 +547,7 @@ func TestEffectiveRoleResources(t *testing.T) {
 	setupTestHierarchy(t, a)
 
 	// Editor should have /data/* (own) — no auto-inheritance
-	effective, err := a.GetEffectiveRoleResources("editor")
+	effective, err := a.RoleResources("editor")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,7 +557,7 @@ func TestEffectiveRoleResources(t *testing.T) {
 	}
 
 	// Admin should have /user/* (own) + /g/** (grant from root)
-	effective, err = a.GetEffectiveRoleResources("admin")
+	effective, err = a.RoleResources("admin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -709,7 +709,7 @@ func TestSelfHealDanglingGrantFrom(t *testing.T) {
 		},
 	})
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 0 {
 		t.Errorf("expected 0 grants, got %d: %+v", len(grants), grants)
 	}
@@ -726,7 +726,7 @@ func TestSelfHealDanglingGrantTo(t *testing.T) {
 		},
 	})
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 0 {
 		t.Errorf("expected 0 grants, got %d: %+v", len(grants), grants)
 	}
@@ -745,7 +745,7 @@ func TestSelfHealNotAncestorGrant(t *testing.T) {
 		},
 	})
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 0 {
 		t.Errorf("expected 0 grants, got %d: %+v", len(grants), grants)
 	}
@@ -764,7 +764,7 @@ func TestSelfHealDuplicateGrant(t *testing.T) {
 		},
 	})
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 1 {
 		t.Errorf("expected 1 grant (deduplicated), got %d: %+v", len(grants), grants)
 	}
@@ -785,7 +785,7 @@ func TestSelfHealSelfGrant(t *testing.T) {
 	})
 
 	// No grant record should exist.
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 0 {
 		t.Errorf("expected 0 grants for self-grant, got %d", len(grants))
 	}
@@ -845,7 +845,7 @@ func TestSelfHealComplete(t *testing.T) {
 	}
 
 	// Only the valid grant should survive (deduplicated to 1).
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	if len(grants) != 1 {
 		t.Errorf("expected 1 grant, got %d: %+v", len(grants), grants)
 	}
@@ -871,24 +871,24 @@ func TestSelfHealComplete(t *testing.T) {
 // Error path tests — invalid inputs
 // =============================================================================
 
-func TestGrantResourceInvalidPath(t *testing.T) {
+func TestGrantInvalidPath(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	err := a.GrantResource("root", "root", "")
+	err := a.Grant("root", "root", "")
 	if !errors.Is(err, ErrInvalidResource) {
 		t.Errorf("expected ErrInvalidResource for empty path, got %v", err)
 	}
 
-	err = a.GrantResource("root", "root", "no-leading-slash")
+	err = a.Grant("root", "root", "no-leading-slash")
 	if !errors.Is(err, ErrInvalidResource) {
 		t.Errorf("expected ErrInvalidResource for no leading /, got %v", err)
 	}
 }
 
-func TestRevokeResourceInvalidPath(t *testing.T) {
+func TestRevokeInvalidPath(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	err := a.RevokeResource("root", "root", "")
+	err := a.Revoke("root", "root", "")
 	if !errors.Is(err, ErrInvalidResource) {
 		t.Errorf("expected ErrInvalidResource, got %v", err)
 	}
@@ -921,37 +921,37 @@ func TestGetRoleNonExistent(t *testing.T) {
 	}
 }
 
-func TestGetEffectiveRoleResourcesNonExistent(t *testing.T) {
+func TestRoleResourcesNonExistent(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	_, err := a.GetEffectiveRoleResources("nonexistent")
+	_, err := a.RoleResources("nonexistent")
 	if !errors.Is(err, ErrRoleNotFound) {
 		t.Errorf("expected ErrRoleNotFound, got %v", err)
 	}
 }
 
-func TestGetUserPermissionsNonExistent(t *testing.T) {
+func TestPermissionsNonExistent(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	_, err := a.GetUserPermissions("nonexistent")
+	_, err := a.Permissions("nonexistent")
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Errorf("expected ErrUserNotFound, got %v", err)
 	}
 }
 
-func TestGetGrantsToRoleNonExistent(t *testing.T) {
+func TestGrantsToNonExistent(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	_, err := a.GetGrantsToRole("nonexistent")
+	_, err := a.GrantsTo("nonexistent")
 	if !errors.Is(err, ErrRoleNotFound) {
 		t.Errorf("expected ErrRoleNotFound, got %v", err)
 	}
 }
 
-func TestGetGrantsFromRoleNonExistent(t *testing.T) {
+func TestGrantsFromNonExistent(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	_, err := a.GetGrantsFromRole("nonexistent")
+	_, err := a.GrantsFrom("nonexistent")
 	if !errors.Is(err, ErrRoleNotFound) {
 		t.Errorf("expected ErrRoleNotFound, got %v", err)
 	}
@@ -1022,7 +1022,7 @@ func TestSelfReferencingParentHealed(t *testing.T) {
 func TestMatchCacheHit(t *testing.T) {
 	a := newTestAuthorizer(t)
 	must(t, a.CreateRole("root", "admin"))
-	must(t, a.GrantResource("admin", "admin", "/user/*"))
+	must(t, a.Grant("admin", "admin", "/user/*"))
 	must(t, a.CreateUser("admin", "u"))
 
 	// First call — cache miss, populates cache
@@ -1038,7 +1038,7 @@ func TestMatchCacheHit(t *testing.T) {
 	}
 
 	// After grant change, cache should be invalidated
-	must(t, a.RevokeResource("admin", "admin", "/user/*"))
+	must(t, a.Revoke("admin", "admin", "/user/*"))
 	ok, _ = a.Enforce("u", "/user/edit")
 	if ok {
 		t.Error("expected false after revoke (cache should be invalidated)")
@@ -1057,7 +1057,7 @@ func TestMatchCacheInvalidationOnGrant(t *testing.T) {
 	}
 
 	// Grant and re-check — must NOT return stale cached false
-	must(t, a.GrantResource("role", "role", "/data/*"))
+	must(t, a.Grant("role", "role", "/data/*"))
 	ok, _ = a.Enforce("u", "/data/read")
 	if !ok {
 		t.Error("expected true after grant (cache must be invalidated)")
@@ -1067,7 +1067,7 @@ func TestMatchCacheInvalidationOnGrant(t *testing.T) {
 func TestMatchCacheInvalidationOnRevoke(t *testing.T) {
 	a := newTestAuthorizer(t)
 	must(t, a.CreateRole("root", "role"))
-	must(t, a.GrantResource("role", "role", "/data/*"))
+	must(t, a.Grant("role", "role", "/data/*"))
 	must(t, a.CreateUser("role", "u"))
 
 	// Prime cache with a hit
@@ -1077,7 +1077,7 @@ func TestMatchCacheInvalidationOnRevoke(t *testing.T) {
 	}
 
 	// Revoke and re-check — must NOT return stale cached true
-	must(t, a.RevokeResource("role", "role", "/data/*"))
+	must(t, a.Revoke("role", "role", "/data/*"))
 	ok, _ = a.Enforce("u", "/data/read")
 	if ok {
 		t.Error("expected false after revoke (cache must be invalidated)")
@@ -1088,7 +1088,7 @@ func TestMatchCacheInvalidationOnDeleteRole(t *testing.T) {
 	a := newTestAuthorizer(t)
 	must(t, a.CreateRole("root", "role"))
 	must(t, a.CreateUser("role", "u"))
-	must(t, a.GrantResource("root", "role", "/shared/*"))
+	must(t, a.Grant("root", "role", "/shared/*"))
 
 	// Prime cache
 	ok, _ := a.Enforce("u", "/shared/doc")
@@ -1116,12 +1116,12 @@ func TestMatchCacheInvalidationOnDeleteRole(t *testing.T) {
 func TestGrantToNonExistentRole(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	err := a.GrantResource("root", "nonexistent", "/x")
+	err := a.Grant("root", "nonexistent", "/x")
 	if !errors.Is(err, ErrRoleNotFound) {
 		t.Errorf("expected ErrRoleNotFound, got %v", err)
 	}
 
-	err = a.GrantResource("nonexistent", "root", "/x")
+	err = a.Grant("nonexistent", "root", "/x")
 	if !errors.Is(err, ErrRoleNotFound) {
 		t.Errorf("expected ErrRoleNotFound, got %v", err)
 	}
@@ -1130,7 +1130,7 @@ func TestGrantToNonExistentRole(t *testing.T) {
 func TestRevokeNonExistentGrant(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	err := a.RevokeResource("root", "root", "/nonexistent")
+	err := a.Revoke("root", "root", "/nonexistent")
 	if !errors.Is(err, ErrGrantNotFound) {
 		t.Errorf("expected ErrGrantNotFound, got %v", err)
 	}
@@ -1139,7 +1139,7 @@ func TestRevokeNonExistentGrant(t *testing.T) {
 func TestRevokeNonExistentRole(t *testing.T) {
 	a := newTestAuthorizer(t)
 
-	err := a.RevokeResource("root", "nonexistent", "/x")
+	err := a.Revoke("root", "nonexistent", "/x")
 	if !errors.Is(err, ErrGrantNotFound) {
 		t.Errorf("expected ErrGrantNotFound, got %v", err)
 	}
@@ -1153,8 +1153,8 @@ func TestMultipleGrantsDifferentAncestors(t *testing.T) {
 	must(t, a.CreateUser("child", "u"))
 
 	// Multiple ancestors grant the same resource
-	must(t, a.GrantResource("root", "child", "/shared/**"))
-	must(t, a.GrantResource("grandparent", "child", "/shared/**")) // duplicate — should fail
+	must(t, a.Grant("root", "child", "/shared/**"))
+	must(t, a.Grant("grandparent", "child", "/shared/**")) // duplicate — should fail
 
 	// Check the first grant works
 	ok, _ := a.Enforce("u", "/shared/doc")
@@ -1168,20 +1168,20 @@ func TestGrantRevokeThenGrantAgain(t *testing.T) {
 	must(t, a.CreateRole("root", "child"))
 	must(t, a.CreateUser("child", "u"))
 
-	must(t, a.GrantResource("root", "child", "/toggle"))
+	must(t, a.Grant("root", "child", "/toggle"))
 	ok, _ := a.Enforce("u", "/toggle")
 	if !ok {
 		t.Fatal("expected true after grant")
 	}
 
-	must(t, a.RevokeResource("root", "child", "/toggle"))
+	must(t, a.Revoke("root", "child", "/toggle"))
 	ok, _ = a.Enforce("u", "/toggle")
 	if ok {
 		t.Error("expected false after revoke")
 	}
 
 	// Grant again — should work
-	must(t, a.GrantResource("root", "child", "/toggle"))
+	must(t, a.Grant("root", "child", "/toggle"))
 	ok, _ = a.Enforce("u", "/toggle")
 	if !ok {
 		t.Error("expected true after re-grant")
@@ -1196,15 +1196,15 @@ func TestRevokeCascadeMultipleGenerations(t *testing.T) {
 	must(t, a.CreateRole("r3", "r4"))
 
 	// Grant /cascade down the chain
-	must(t, a.GrantResource("root", "r1", "/cascade"))
-	must(t, a.GrantResource("r1", "r2", "/cascade"))
-	must(t, a.GrantResource("r2", "r3", "/cascade"))
-	must(t, a.GrantResource("r3", "r4", "/cascade"))
+	must(t, a.Grant("root", "r1", "/cascade"))
+	must(t, a.Grant("r1", "r2", "/cascade"))
+	must(t, a.Grant("r2", "r3", "/cascade"))
+	must(t, a.Grant("r3", "r4", "/cascade"))
 
 	// Revoke at top — all should cascade
-	must(t, a.RevokeResource("root", "r1", "/cascade"))
+	must(t, a.Revoke("root", "r1", "/cascade"))
 
-	grants := a.GetAllGrants()
+	grants := a.AllGrants()
 	for _, g := range grants {
 		if g.Resource == "/cascade" {
 			t.Errorf("cascade grant still exists: %+v", g)
@@ -1217,7 +1217,7 @@ func TestGrantWithSpecialChars(t *testing.T) {
 	must(t, a.CreateRole("root", "child"))
 	must(t, a.CreateUser("child", "u"))
 
-	must(t, a.GrantResource("child", "child", "/api/v1/items/*"))
+	must(t, a.Grant("child", "child", "/api/v1/items/*"))
 	ok, _ := a.Enforce("u", "/api/v1/items/123")
 	if !ok {
 		t.Error("expected true for /api/v1/items/123")
@@ -1243,7 +1243,7 @@ func TestDeepRoleNesting(t *testing.T) {
 		parent = id
 	}
 
-	roles := a.GetAllRoles()
+	roles := a.Roles()
 	if len(roles) != 21 { // root + 20 children
 		t.Errorf("expected 21 roles, got %d", len(roles))
 	}
@@ -1261,7 +1261,7 @@ func TestDeepGrantChain(t *testing.T) {
 	must(t, a.CreateUser("r9", "deep_user"))
 
 	// Grant from root to deepest role — skips 8 intermediate roles
-	must(t, a.GrantResource("root", "r9", "/deep/**"))
+	must(t, a.Grant("root", "r9", "/deep/**"))
 
 	ok, _ := a.Enforce("deep_user", "/deep/nested/path")
 	if !ok {
@@ -1279,7 +1279,7 @@ func TestNormalizeResourcePath(t *testing.T) {
 	must(t, a.CreateUser("child", "u"))
 
 	// Double slashes should be normalized
-	must(t, a.GrantResource("child", "child", "/data//read"))
+	must(t, a.Grant("child", "child", "/data//read"))
 	ok, _ := a.Enforce("u", "/data/read")
 	if !ok {
 		t.Log("double slash normalized by path.Clean")
@@ -1290,7 +1290,7 @@ func TestNoAdapterPersistence(t *testing.T) {
 	// Authorizer without adapter should work and not crash on save
 	a := newTestAuthorizer(t)
 	must(t, a.CreateRole("root", "child"))
-	must(t, a.GrantResource("root", "child", "/app/*"))
+	must(t, a.Grant("root", "child", "/app/*"))
 	must(t, a.CreateUser("child", "u1"))
 
 	ok, _ := a.Enforce("u1", "/app/dashboard")

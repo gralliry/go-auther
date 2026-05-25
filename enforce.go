@@ -14,7 +14,7 @@ import (
 //
 // 祖先角色的资源和授权不会自动继承。
 func (a *Authorizer) Enforce(userID, res string) (bool, error) {
-	normalized, err := normalizeResource(res)
+	normalized, err := normalizeRes(res)
 	if err != nil {
 		return false, err
 	}
@@ -59,8 +59,8 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 	return false, nil
 }
 
-// GetUserPermissions 返回用户当前生效的所有资源权限模式（去重）。
-func (a *Authorizer) GetUserPermissions(userID string) ([]string, error) {
+// Permissions 返回用户当前生效的所有资源权限模式（去重）。
+func (a *Authorizer) Permissions(userID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 

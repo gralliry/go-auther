@@ -45,9 +45,9 @@ func benchAuthorizer(b *testing.B) *Authorizer {
 	a, _ := NewAuthorizer(nil)
 	_ = a.CreateRole("root", "admin")
 	_ = a.CreateRole("admin", "editor")
-	_ = a.GrantResource("admin", "admin", "/user/*")
-	_ = a.GrantResource("editor", "editor", "/data/*")
-	_ = a.GrantResource("root", "admin", "/g/**")
+	_ = a.Grant("admin", "admin", "/user/*")
+	_ = a.Grant("editor", "editor", "/data/*")
+	_ = a.Grant("root", "admin", "/g/**")
 	_ = a.CreateUser("admin", "u_admin")
 	_ = a.CreateUser("editor", "u_editor")
 	return a

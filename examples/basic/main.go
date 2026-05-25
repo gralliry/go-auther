@@ -21,11 +21,11 @@ func main() {
 	must(a.CreateRole("admin", "editor"))
 
 	// admin 拥有 /user/* 权限
-	must(a.GrantResource("admin", "admin", "/user/*"))
+	must(a.Grant("admin", "admin", "/user/*"))
 	// editor 拥有 /data/* 权限
-	must(a.GrantResource("editor", "editor", "/data/*"))
+	must(a.Grant("editor", "editor", "/data/*"))
 	// root 向 admin 授权 /g/**
-	must(a.GrantResource("root", "admin", "/g/**"))
+	must(a.Grant("root", "admin", "/g/**"))
 
 	// 创建用户
 	must(a.CreateUser("admin", "u_admin"))

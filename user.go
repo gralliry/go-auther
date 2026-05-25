@@ -70,8 +70,8 @@ func (a *Authorizer) GetUser(userID string) (*model.UserInfo, error) {
 	}, nil
 }
 
-// GetAllUsers 返回系统中所有用户的列表。
-func (a *Authorizer) GetAllUsers() []*model.UserInfo {
+// Users 返回系统中所有用户的列表。
+func (a *Authorizer) Users() []*model.UserInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
