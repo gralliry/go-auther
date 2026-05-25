@@ -29,9 +29,10 @@ func main() {
 
     // Grant resources from root to roles
     a.Grant("root", "admin", "/user/*")
+    a.Grant("root", "admin", "/reports/*")
     a.Grant("root", "editor", "/data/*")
 
-    // Delegate /reports/* from admin to editor
+    // admin delegates /reports/* to editor
     a.Grant("admin", "editor", "/reports/*")
 
     a.CreateUser("editor", "alice")
