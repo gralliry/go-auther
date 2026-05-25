@@ -12,104 +12,250 @@
 //	)
 //
 //	db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")
-//	adapter, _ := sqladapter.NewSQLAdapter(db, "auther_policy")
+//	adapter, _ := sqladapter.NewSQLAdapter(db, "myapp_", "auther")
 //	a, _ := auther.NewAuthorizer(adapter)
 package sqladapter
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"regexp"
 
-	"auther"
+	"auther/snapshot"
 )
 
 var validTableRE = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
-// TablePrefix is prepended to every table name passed to NewSQLAdapter.
-// Set it once before creating adapters, e.g.:
-//
-//	sqladapter.TablePrefix = "myapp_"
-//
-// The default is empty (no prefix).
-var TablePrefix string
-
-// SQLAdapter persists policy snapshots via database/sql.
+// SQLAdapter persists policy data via database/sql using per-entity tables.
 type SQLAdapter struct {
-	db    *sql.DB
-	table string
+	db        *sql.DB
+	rolesTbl  string
+	usersTbl  string
+	grantsTbl string
 }
+
 
 // NewSQLAdapter creates a new SQL-backed adapter.
 //
-// db must be an open *sql.DB connection. table is the table name used for
-// policy storage — it is validated against /^[a-zA-Z_][a-zA-Z0-9_]*$/ to
-// prevent SQL injection.
+// db must be an open *sql.DB connection. prefix is prepended to table to form
+// the table name base, which is then used to create three tables:
+// <prefix><table>_roles, <prefix><table>_users, <prefix><table>_grants.
+// Pass "" for no prefix.
 //
-// The table is automatically created if it doesn't exist.
-func NewSQLAdapter(db *sql.DB, table string) (*SQLAdapter, error) {
+// Tables are automatically created if they don't exist.
+func NewSQLAdapter(db *sql.DB, prefix, table string) (*SQLAdapter, error) {
+	if prefix != "" && !validTableRE.MatchString(prefix) {
+		return nil, fmt.Errorf("sqladapter: invalid prefix %q", prefix)
+	}
 	if !validTableRE.MatchString(table) {
 		return nil, fmt.Errorf("sqladapter: invalid table name %q", table)
 	}
 
-	fullTable := TablePrefix + table
-
-	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-		namespace TEXT PRIMARY KEY,
-		data     TEXT NOT NULL
-	)`, fullTable)
-
-	if _, err := db.Exec(query); err != nil {
-		return nil, fmt.Errorf("sqladapter: create table: %w", err)
+	base := prefix + table
+	a := &SQLAdapter{
+		db:        db,
+		rolesTbl:  base + "_roles",
+		usersTbl:  base + "_users",
+		grantsTbl: base + "_grants",
 	}
 
-	return &SQLAdapter{db: db, table: fullTable}, nil
+	for _, ddl := range []string{
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+			id        TEXT PRIMARY KEY,
+			parent_id TEXT NOT NULL
+		)`, a.rolesTbl),
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+			id      TEXT PRIMARY KEY,
+			role_id TEXT NOT NULL
+		)`, a.usersTbl),
+		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+			from_role_id TEXT NOT NULL,
+			to_role_id   TEXT NOT NULL,
+			resource     TEXT NOT NULL,
+			PRIMARY KEY (from_role_id, to_role_id, resource)
+		)`, a.grantsTbl),
+	} {
+		if _, err := db.Exec(ddl); err != nil {
+			return nil, fmt.Errorf("sqladapter: create table: %w", err)
+		}
+	}
+
+	return a, nil
 }
 
-// Load reads the policy snapshot from the database.
-// Returns nil if no snapshot has been saved yet.
-func (a *SQLAdapter) Load() (*auther.PolicySnapshot, error) {
-	query := fmt.Sprintf(`SELECT data FROM %s WHERE namespace = 'auther'`, a.table)
-	var raw string
-	err := a.db.QueryRow(query).Scan(&raw)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
+// ---------------------------------------------------------------------------
+// Full-snapshot interface (auther.Adapter)
+// ---------------------------------------------------------------------------
+
+// Load reads all rows and assembles a PolicySnapshot.
+func (a *SQLAdapter) Load() (*snapshot.Policy, error) {
+	snap := &snapshot.Policy{}
+
+	rows, err := a.db.Query(fmt.Sprintf("SELECT id, parent_id FROM %s", a.rolesTbl))
 	if err != nil {
-		return nil, fmt.Errorf("sqladapter: load: %w", err)
+		return nil, fmt.Errorf("sqladapter: load roles: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rs snapshot.Role
+		if err := rows.Scan(&rs.ID, &rs.ParentID); err != nil {
+			return nil, fmt.Errorf("sqladapter: scan role: %w", err)
+		}
+		snap.Roles = append(snap.Roles, rs)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	var snap auther.PolicySnapshot
-	if err := json.Unmarshal([]byte(raw), &snap); err != nil {
-		return nil, fmt.Errorf("sqladapter: unmarshal: %w", err)
+	userRows, err := a.db.Query(fmt.Sprintf("SELECT id, role_id FROM %s", a.usersTbl))
+	if err != nil {
+		return nil, fmt.Errorf("sqladapter: load users: %w", err)
 	}
-	return &snap, nil
+	defer userRows.Close()
+	for userRows.Next() {
+		var us snapshot.User
+		if err := userRows.Scan(&us.ID, &us.RoleID); err != nil {
+			return nil, fmt.Errorf("sqladapter: scan user: %w", err)
+		}
+		snap.Users = append(snap.Users, us)
+	}
+	if err := userRows.Err(); err != nil {
+		return nil, err
+	}
+
+	grantRows, err := a.db.Query(fmt.Sprintf("SELECT from_role_id, to_role_id, resource FROM %s", a.grantsTbl))
+	if err != nil {
+		return nil, fmt.Errorf("sqladapter: load grants: %w", err)
+	}
+	defer grantRows.Close()
+	for grantRows.Next() {
+		var gs snapshot.Grant
+		if err := grantRows.Scan(&gs.FromRoleID, &gs.ToRoleID, &gs.Resource); err != nil {
+			return nil, fmt.Errorf("sqladapter: scan grant: %w", err)
+		}
+		snap.Grants = append(snap.Grants, gs)
+	}
+	if err := grantRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return snap, nil
 }
 
-// Save persists the policy snapshot to the database.
-// Uses DELETE + INSERT in a transaction for portable UPSERT behavior.
-func (a *SQLAdapter) Save(snapshot *auther.PolicySnapshot) error {
-	data, err := json.Marshal(snapshot)
-	if err != nil {
-		return fmt.Errorf("sqladapter: marshal: %w", err)
-	}
-
+// Save truncates all tables and re-inserts the full state in a transaction.
+func (a *SQLAdapter) Save(snapshot *snapshot.Policy) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return fmt.Errorf("sqladapter: begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	del := fmt.Sprintf(`DELETE FROM %s WHERE namespace = 'auther'`, a.table)
-	if _, err := tx.Exec(del); err != nil {
-		return fmt.Errorf("sqladapter: delete: %w", err)
+	for _, tbl := range []string{a.rolesTbl, a.usersTbl, a.grantsTbl} {
+		if _, err := tx.Exec(fmt.Sprintf("DELETE FROM %s", tbl)); err != nil {
+			return fmt.Errorf("sqladapter: truncate: %w", err)
+		}
 	}
 
-	ins := fmt.Sprintf(`INSERT INTO %s (namespace, data) VALUES ('auther', ?)`, a.table)
-	if _, err := tx.Exec(ins, string(data)); err != nil {
-		return fmt.Errorf("sqladapter: insert: %w", err)
+	for _, rs := range snapshot.Roles {
+		if _, err := tx.Exec(
+			fmt.Sprintf("INSERT INTO %s (id, parent_id) VALUES (?, ?)", a.rolesTbl),
+			rs.ID, rs.ParentID,
+		); err != nil {
+			return fmt.Errorf("sqladapter: insert role: %w", err)
+		}
+	}
+	for _, us := range snapshot.Users {
+		if _, err := tx.Exec(
+			fmt.Sprintf("INSERT INTO %s (id, role_id) VALUES (?, ?)", a.usersTbl),
+			us.ID, us.RoleID,
+		); err != nil {
+			return fmt.Errorf("sqladapter: insert user: %w", err)
+		}
+	}
+	for _, gs := range snapshot.Grants {
+		if _, err := tx.Exec(
+			fmt.Sprintf("INSERT INTO %s (from_role_id, to_role_id, resource) VALUES (?, ?, ?)", a.grantsTbl),
+			gs.FromRoleID, gs.ToRoleID, gs.Resource,
+		); err != nil {
+			return fmt.Errorf("sqladapter: insert grant: %w", err)
+		}
 	}
 
 	return tx.Commit()
+}
+
+// ---------------------------------------------------------------------------
+// Incremental interface (auther.IncrementalAdapter)
+// ---------------------------------------------------------------------------
+
+// CreateRole inserts a single role row.
+func (a *SQLAdapter) CreateRole(role snapshot.Role) error {
+	_, err := a.db.Exec(
+		fmt.Sprintf("INSERT INTO %s (id, parent_id) VALUES (?, ?)", a.rolesTbl),
+		role.ID, role.ParentID,
+	)
+	if err != nil {
+		return fmt.Errorf("sqladapter: create role: %w", err)
+	}
+	return nil
+}
+
+// DeleteRole removes a single role row.
+func (a *SQLAdapter) DeleteRole(role snapshot.Role) error {
+	_, err := a.db.Exec(
+		fmt.Sprintf("DELETE FROM %s WHERE id = ?", a.rolesTbl),
+		role.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("sqladapter: delete role: %w", err)
+	}
+	return nil
+}
+
+// CreateUser inserts a single user row.
+func (a *SQLAdapter) CreateUser(user snapshot.User) error {
+	_, err := a.db.Exec(
+		fmt.Sprintf("INSERT INTO %s (id, role_id) VALUES (?, ?)", a.usersTbl),
+		user.ID, user.RoleID,
+	)
+	if err != nil {
+		return fmt.Errorf("sqladapter: create user: %w", err)
+	}
+	return nil
+}
+
+// DeleteUser removes a single user row.
+func (a *SQLAdapter) DeleteUser(user snapshot.User) error {
+	_, err := a.db.Exec(
+		fmt.Sprintf("DELETE FROM %s WHERE id = ? AND role_id = ?", a.usersTbl),
+		user.ID, user.RoleID,
+	)
+	if err != nil {
+		return fmt.Errorf("sqladapter: delete user: %w", err)
+	}
+	return nil
+}
+
+// AddGrant inserts a single grant row.
+func (a *SQLAdapter) AddGrant(grant snapshot.Grant) error {
+	_, err := a.db.Exec(
+		fmt.Sprintf("INSERT INTO %s (from_role_id, to_role_id, resource) VALUES (?, ?, ?)", a.grantsTbl),
+		grant.FromRoleID, grant.ToRoleID, grant.Resource,
+	)
+	if err != nil {
+		return fmt.Errorf("sqladapter: add grant: %w", err)
+	}
+	return nil
+}
+
+// RemoveGrant deletes a single grant row.
+func (a *SQLAdapter) RemoveGrant(grant snapshot.Grant) error {
+	_, err := a.db.Exec(
+		fmt.Sprintf("DELETE FROM %s WHERE from_role_id = ? AND to_role_id = ? AND resource = ?", a.grantsTbl),
+		grant.FromRoleID, grant.ToRoleID, grant.Resource,
+	)
+	if err != nil {
+		return fmt.Errorf("sqladapter: remove grant: %w", err)
+	}
+	return nil
 }

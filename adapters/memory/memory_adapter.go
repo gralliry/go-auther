@@ -1,16 +1,15 @@
-// Package memoryadapter provides an in-memory adapter for testing and development.
 package memoryadapter
 
 import (
 	"sync"
 
-	"auther"
+	"auther/snapshot"
 )
 
-// MemoryAdapter stores policy snapshots in memory.
+// MemoryAdapter stores policy data in memory. Implements auther.Adapter.
 type MemoryAdapter struct {
 	mu       sync.RWMutex
-	snapshot *auther.PolicySnapshot
+	snapshot *snapshot.Policy
 }
 
 // NewMemoryAdapter creates a new in-memory adapter.
@@ -18,42 +17,108 @@ func NewMemoryAdapter() *MemoryAdapter {
 	return &MemoryAdapter{}
 }
 
-// Load returns the stored policy snapshot, or nil if none exists.
-func (a *MemoryAdapter) Load() (*auther.PolicySnapshot, error) {
+func (a *MemoryAdapter) Load() (*snapshot.Policy, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	if a.snapshot == nil {
 		return nil, nil
 	}
-	// Deep copy to avoid the caller mutating our stored state
 	return copySnapshot(a.snapshot), nil
 }
 
-// Save persists a policy snapshot in memory.
-func (a *MemoryAdapter) Save(snapshot *auther.PolicySnapshot) error {
+func (a *MemoryAdapter) Save(snapshot *snapshot.Policy) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
 	a.snapshot = copySnapshot(snapshot)
 	return nil
 }
 
-// copySnapshot creates a deep copy of a PolicySnapshot.
-func copySnapshot(s *auther.PolicySnapshot) *auther.PolicySnapshot {
+func (a *MemoryAdapter) CreateRole(role snapshot.Role) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ensure()
+	a.snapshot.Roles = append(a.snapshot.Roles, role)
+	return nil
+}
+
+func (a *MemoryAdapter) DeleteRole(role snapshot.Role) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.snapshot == nil {
+		return nil
+	}
+	for i, r := range a.snapshot.Roles {
+		if r.ID == role.ID {
+			a.snapshot.Roles = append(a.snapshot.Roles[:i], a.snapshot.Roles[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (a *MemoryAdapter) CreateUser(user snapshot.User) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ensure()
+	a.snapshot.Users = append(a.snapshot.Users, user)
+	return nil
+}
+
+func (a *MemoryAdapter) DeleteUser(user snapshot.User) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.snapshot == nil {
+		return nil
+	}
+	for i, u := range a.snapshot.Users {
+		if u.ID == user.ID {
+			a.snapshot.Users = append(a.snapshot.Users[:i], a.snapshot.Users[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (a *MemoryAdapter) AddGrant(grant snapshot.Grant) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.ensure()
+	a.snapshot.Grants = append(a.snapshot.Grants, grant)
+	return nil
+}
+
+func (a *MemoryAdapter) RemoveGrant(grant snapshot.Grant) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.snapshot == nil {
+		return nil
+	}
+	for i, g := range a.snapshot.Grants {
+		if g.FromRoleID == grant.FromRoleID && g.ToRoleID == grant.ToRoleID && g.Resource == grant.Resource {
+			a.snapshot.Grants = append(a.snapshot.Grants[:i], a.snapshot.Grants[i+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
+func (a *MemoryAdapter) ensure() {
+	if a.snapshot == nil {
+		a.snapshot = &snapshot.Policy{}
+	}
+}
+
+func copySnapshot(s *snapshot.Policy) *snapshot.Policy {
 	if s == nil {
 		return nil
 	}
-	c := &auther.PolicySnapshot{}
-
-	c.Roles = make([]auther.RoleSnapshot, len(s.Roles))
+	c := &snapshot.Policy{}
+	c.Roles = make([]snapshot.Role, len(s.Roles))
 	copy(c.Roles, s.Roles)
-
-	c.Users = make([]auther.UserSnapshot, len(s.Users))
+	c.Users = make([]snapshot.User, len(s.Users))
 	copy(c.Users, s.Users)
-
-	c.Grants = make([]auther.GrantSnapshot, len(s.Grants))
+	c.Grants = make([]snapshot.Grant, len(s.Grants))
 	copy(c.Grants, s.Grants)
-
 	return c
 }

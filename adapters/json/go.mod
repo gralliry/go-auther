@@ -1,4 +1,4 @@
-module auther/adapters/file
+module auther/adapters/json
 
 go 1.26
 

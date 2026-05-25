@@ -57,7 +57,7 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
 	toRole.GrantedMap[res] = true
 	toRole.ResetMatchCache()
-	return a.save()
+	return a.saveGrant(fromRoleID, toRoleID, res)
 }
 
 // Revoke 撤销一条授权，并级联删除该子树中所有相同资源的子授权。

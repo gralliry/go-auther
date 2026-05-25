@@ -118,8 +118,16 @@ Write-through: every mutation is immediately persisted via the adapter.
 
 ```go
 type Adapter interface {
-    Load() (*PolicySnapshot, error)
-    Save(snapshot *PolicySnapshot) error
+    Load() (*snapshot.Policy, error)
+    Save(snapshot *snapshot.Policy) error
+
+    // Incremental methods use snapshot types for future-proofing.
+    CreateRole(role snapshot.Role) error
+    DeleteRole(role snapshot.Role) error
+    CreateUser(user snapshot.User) error
+    DeleteUser(user snapshot.User) error
+    AddGrant(grant snapshot.Grant) error
+    RemoveGrant(grant snapshot.Grant) error
 }
 ```
 
@@ -131,12 +139,12 @@ import memoryadapter "github.com/gralliry/auther/adapters/memory"
 a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
 ```
 
-**File** (JSON, atomic writes):
+**JSON** (file-backed, atomic writes):
 
 ```go
-import fileadapter "github.com/gralliry/auther/adapters/file"
+import jsonadapter "github.com/gralliry/auther/adapters/json"
 
-a, _ := auther.NewAuthorizer(fileadapter.NewFileAdapter("/path/to/policy.json"))
+a, _ := auther.NewAuthorizer(jsonadapter.NewJSONAdapter("/path/to/policy.json"))
 ```
 
 **SQL** (MySQL, PostgreSQL, SQLite — any `database/sql` driver):
@@ -149,7 +157,7 @@ import (
 )
 
 db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")
-adapter, _ := sqladapter.NewSQLAdapter(db, "auther_policy")
+adapter, _ := sqladapter.NewSQLAdapter(db, "myapp_", "auther_policy")
 a, _ := auther.NewAuthorizer(adapter)
 ```
 

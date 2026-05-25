@@ -29,6 +29,7 @@ import (
 	"sync"
 
 	"auther/internal/model"
+	"auther/snapshot"
 )
 
 // GrantInfo 通过别名暴露给外部使用。
@@ -54,7 +55,7 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 		users:   make(map[string]*model.UserNode),
 	}
 
-	var snap *PolicySnapshot
+	var snap *snapshot.Policy
 	if adapter != nil {
 		var err error
 		snap, err = adapter.Load()
@@ -86,7 +87,7 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 // buildTree 从持久化快照重建内存中的角色树。
 // 在加载过程中会自动修复损坏的数据（孤立角色、悬挂用户、无效授权等），
 // 并在确实清理了数据时才将修复后的状态写回适配器。
-func (a *Authorizer) buildTree(snapshot *PolicySnapshot) error {
+func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
 	a.roles = make(map[string]*model.RoleNode)
 	a.users = make(map[string]*model.UserNode)
 
@@ -109,7 +110,7 @@ func (a *Authorizer) buildTree(snapshot *PolicySnapshot) error {
 }
 
 // buildRoles 创建所有角色节点，返回根角色 ID 和是否发生过清理。
-func (a *Authorizer) buildRoles(roles []RoleSnapshot) (rootID string, cleansed bool) {
+func (a *Authorizer) buildRoles(roles []snapshot.Role) (rootID string, cleansed bool) {
 	for _, rs := range roles {
 		role := &model.RoleNode{
 			ID:         rs.ID,
@@ -144,7 +145,7 @@ func (a *Authorizer) buildRoles(roles []RoleSnapshot) (rootID string, cleansed b
 }
 
 // linkParents 为所有角色建立父子链接。无效父角色 → 挂载到根。
-func (a *Authorizer) linkParents(roles []RoleSnapshot, rootID string) (cleansed bool) {
+func (a *Authorizer) linkParents(roles []snapshot.Role, rootID string) (cleansed bool) {
 	for _, rs := range roles {
 		if rs.ID == rootID {
 			continue
@@ -165,7 +166,7 @@ func (a *Authorizer) linkParents(roles []RoleSnapshot, rootID string) (cleansed 
 }
 
 // loadUsers 加载用户快照。所属角色不存在 → 丢弃。
-func (a *Authorizer) loadUsers(users []UserSnapshot) (cleansed bool) {
+func (a *Authorizer) loadUsers(users []snapshot.User) (cleansed bool) {
 	for _, us := range users {
 		role := a.roles[us.RoleID]
 		if role == nil {
@@ -180,7 +181,7 @@ func (a *Authorizer) loadUsers(users []UserSnapshot) (cleansed bool) {
 }
 
 // loadGrants 加载授权记录。无效授权、重复授权、自授权（转为 GrantedMap 条目）均被清洗。
-func (a *Authorizer) loadGrants(grants []GrantSnapshot) (cleansed bool) {
+func (a *Authorizer) loadGrants(grants []snapshot.Grant) (cleansed bool) {
 	seen := make(map[string]bool)
 	for _, gs := range grants {
 		fromRole := a.roles[gs.FromRoleID]
@@ -217,18 +218,18 @@ func (a *Authorizer) loadGrants(grants []GrantSnapshot) (cleansed bool) {
 }
 
 // snapshot 将当前内存中的角色树转换为可序列化的策略快照。
-func (a *Authorizer) snapshot() *PolicySnapshot {
-	snap := &PolicySnapshot{}
+func (a *Authorizer) snapshot() *snapshot.Policy {
+	snap := &snapshot.Policy{}
 
 	var walk func(role *model.RoleNode)
 	walk = func(role *model.RoleNode) {
-		rs := RoleSnapshot{ID: role.ID}
+		rs := snapshot.Role{ID: role.ID}
 		if role.Parent != nil {
 			rs.ParentID = role.Parent.ID
 		}
 		snap.Roles = append(snap.Roles, rs)
 		for _, user := range role.Users {
-			snap.Users = append(snap.Users, UserSnapshot{ID: user.ID, RoleID: user.Role.ID})
+			snap.Users = append(snap.Users, snapshot.User{ID: user.ID, RoleID: user.Role.ID})
 		}
 		for _, child := range role.Children {
 			walk(child)
@@ -243,7 +244,7 @@ func (a *Authorizer) snapshot() *PolicySnapshot {
 			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
 			if !seen[key] {
 				seen[key] = true
-				snap.Grants = append(snap.Grants, GrantSnapshot{
+				snap.Grants = append(snap.Grants, snapshot.Grant{
 					FromRoleID: g.FromRoleID, ToRoleID: g.ToRoleID, Resource: g.Resource,
 				})
 			}
@@ -256,12 +257,44 @@ func (a *Authorizer) snapshot() *PolicySnapshot {
 	return snap
 }
 
-// save 将当前状态通过适配器持久化。如果适配器为空则直接返回。
+// save 将当前状态全量写入适配器。
 func (a *Authorizer) save() error {
 	if a.adapter == nil {
 		return nil
 	}
 	return a.adapter.Save(a.snapshot())
+}
+
+// saveCreateRole 持久化角色创建。
+func (a *Authorizer) saveCreateRole(roleID, parentID string) error {
+	if a.adapter == nil {
+		return nil
+	}
+	return a.adapter.CreateRole(snapshot.Role{ID: roleID, ParentID: parentID})
+}
+
+// saveCreateUser 持久化用户创建。
+func (a *Authorizer) saveCreateUser(roleID, userID string) error {
+	if a.adapter == nil {
+		return nil
+	}
+	return a.adapter.CreateUser(snapshot.User{ID: userID, RoleID: roleID})
+}
+
+// saveDeleteUser 持久化用户删除。
+func (a *Authorizer) saveDeleteUser(roleID, userID string) error {
+	if a.adapter == nil {
+		return nil
+	}
+	return a.adapter.DeleteUser(snapshot.User{ID: userID, RoleID: roleID})
+}
+
+// saveGrant 持久化授权添加。
+func (a *Authorizer) saveGrant(fromRoleID, toRoleID, resource string) error {
+	if a.adapter == nil {
+		return nil
+	}
+	return a.adapter.AddGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource})
 }
 
 // subtree 收集指定角色及其所有后代角色，使用 BFS 遍历。
