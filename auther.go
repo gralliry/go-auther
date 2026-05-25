@@ -75,8 +75,6 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 		GrantedMap: map[string]bool{"/**": true},
 		Users:      make(map[string]*model.UserNode),
 	}
-	a.root.GrantsIn = append(a.root.GrantsIn, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
-	a.root.GrantsOut = append(a.root.GrantsOut, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
 	a.roles["root"] = a.root
 
 	if err := a.save(); err != nil {
@@ -139,8 +137,6 @@ func (a *Authorizer) buildRoles(roles []RoleSnapshot) (rootID string, cleansed b
 				GrantedMap: map[string]bool{"/**": true},
 				Users:      make(map[string]*model.UserNode),
 			}
-			a.roles["root"].GrantsIn = append(a.roles["root"].GrantsIn, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
-			a.roles["root"].GrantsOut = append(a.roles["root"].GrantsOut, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
 		}
 	}
 	a.root = a.roles[rootID]
@@ -183,7 +179,7 @@ func (a *Authorizer) loadUsers(users []UserSnapshot) (cleansed bool) {
 	return cleansed
 }
 
-// loadGrants 加载授权记录。无效授权、重复授权、自授权均被清洗。
+// loadGrants 加载授权记录。无效授权、重复授权、自授权（转为 GrantedMap 条目）均被清洗。
 func (a *Authorizer) loadGrants(grants []GrantSnapshot) (cleansed bool) {
 	seen := make(map[string]bool)
 	for _, gs := range grants {
@@ -193,7 +189,15 @@ func (a *Authorizer) loadGrants(grants []GrantSnapshot) (cleansed bool) {
 			cleansed = true
 			continue
 		}
-		if !a.isAncestorOrSelf(gs.FromRoleID, gs.ToRoleID) {
+
+		// 自授权：将资源直接加入 GrantedMap，不创建 GrantInfo 记录。
+		if gs.FromRoleID == gs.ToRoleID {
+			cleansed = true
+			toRole.GrantedMap[gs.Resource] = true
+			continue
+		}
+
+		if !a.isAncestor(gs.FromRoleID, gs.ToRoleID) {
 			cleansed = true
 			continue
 		}
@@ -287,11 +291,6 @@ func (a *Authorizer) isAncestor(ancestorID, descendantID string) bool {
 		}
 	}
 	return false
-}
-
-// isAncestorOrSelf 判断 aID 是否是 dID 的祖先或其自身。
-func (a *Authorizer) isAncestorOrSelf(aID, dID string) bool {
-	return aID == dID || a.isAncestor(aID, dID)
 }
 
 // checkCycle 检测角色树中是否存在循环引用，O(n) 时间 O(n) 空间。

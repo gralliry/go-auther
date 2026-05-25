@@ -27,17 +27,17 @@ func main() {
     a.CreateRole("root", "admin")
     a.CreateRole("admin", "editor")
 
-    // Self-grant resources to roles
-    a.Grant("admin", "admin", "/user/*")
-    a.Grant("editor", "editor", "/data/*")
+    // Grant resources from root to roles
+    a.Grant("root", "admin", "/user/*")
+    a.Grant("root", "editor", "/data/*")
 
     // Delegate /reports/* from admin to editor
     a.Grant("admin", "editor", "/reports/*")
 
     a.CreateUser("editor", "alice")
 
-    ok, _ := a.Enforce("alice", "/data/read")  // true (own)
-    ok, _ = a.Enforce("alice", "/reports/q1")  // true (granted)
+    ok, _ := a.Enforce("alice", "/data/read")  // true
+    ok, _ = a.Enforce("alice", "/reports/q1")  // true
     ok, _ = a.Enforce("alice", "/user/create") // false (not granted)
     fmt.Println(ok)
 }
@@ -45,12 +45,12 @@ func main() {
 
 ## Concepts
 
-Permissions are **explicit-only**: a role only has access to resources directly granted to it via self-grant or delegated by an ancestor. Root's `/**` does not leak to children.
+Permissions are **explicit-only**: a role only has access to resources granted to it by an ancestor. Root's `/**` does not leak to children.
 
 ```
 root (/**)
- └── admin (/user/*)
-       └── editor (/data/*, /reports/* from admin)
+ └── admin (/user/* from root)
+       └── editor (/data/* from root, /reports/* from admin)
              └── user: alice
 
 alice can:  /data/read, /reports/q1
@@ -81,7 +81,7 @@ func (a *Authorizer) GrantsFrom(roleID string) ([]GrantInfo, error)
 func (a *Authorizer) AllGrants() []GrantInfo
 ```
 
-When `fromRoleID == toRoleID`, the resource is added directly to the role (self-grant). Otherwise `fromRoleID` must be an ancestor of `toRoleID`. `Revoke` cascades: all descendant grants for the same resource are removed.
+`fromRoleID` must be an ancestor of `toRoleID`. Self-grant is not allowed. `Revoke` cascades: all descendant grants for the same resource are removed.
 
 ### Users
 

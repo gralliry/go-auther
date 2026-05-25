@@ -17,11 +17,9 @@ func normalizeRes(raw string) (string, error) {
 	return res, nil
 }
 
-// Grant 将资源授权给指定角色。
+// Grant 将资源从祖先角色授权给后代角色。
 //
-// 当 fromRoleID == toRoleID 时，资源直接添加到该角色自身的资源列表中。
-// 否则，从祖先角色向子角色进行授权委托，形成一条授权记录。
-// 授权方必须是接收方的祖先角色，否则返回 ErrNotAncestor。
+// 授权方必须是接收方的祖先角色（不允许自授权），否则返回 ErrNotAncestor。
 func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	res, err := normalizeRes(resource)
 	if err != nil {
@@ -30,6 +28,10 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	if fromRoleID == toRoleID {
+		return fmt.Errorf("%w: self-grant is not allowed", ErrNotAncestor)
+	}
 
 	fromRole := a.roles[fromRoleID]
 	if fromRole == nil {
@@ -40,16 +42,12 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, toRoleID)
 	}
 
-	if !a.isAncestorOrSelf(fromRoleID, toRoleID) {
+	if !a.isAncestor(fromRoleID, toRoleID) {
 		return fmt.Errorf("%w: %s is not an ancestor of %s", ErrNotAncestor, fromRoleID, toRoleID)
 	}
 
-	// 查重：同一 From+To+Resource 组合不允许重复存在。
 	for _, g := range fromRole.GrantsOut {
 		if g.ToRoleID == toRoleID && g.Resource == res {
-			if fromRoleID == toRoleID {
-				return nil // 自授权幂等
-			}
 			return fmt.Errorf("%w: %s -> %s %s", ErrDuplicateGrant, fromRoleID, toRoleID, res)
 		}
 	}
@@ -70,47 +68,17 @@ func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.revokeLocked(fromRoleID, toRoleID, res)
-}
 
-// revokeLocked 在持有锁的情况下执行撤销逻辑。
-func (a *Authorizer) revokeLocked(fromRoleID, toRoleID string, resource string) error {
+	if fromRoleID == toRoleID {
+		return fmt.Errorf("%w: self-revoke is not allowed", ErrGrantNotFound)
+	}
+
 	fromRole := a.roles[fromRoleID]
 	toRole := a.roles[toRoleID]
 	if fromRole == nil || toRole == nil {
 		return fmt.Errorf("%w", ErrGrantNotFound)
 	}
-
-	if fromRoleID == toRoleID {
-		return a.revokeSelfLocked(toRole, resource)
-	}
-	return a.revokeDelegatedLocked(fromRole, toRole, resource)
-}
-
-// revokeSelfLocked 移除角色自身的资源权限。
-func (a *Authorizer) revokeSelfLocked(role *model.RoleNode, resource string) error {
-	found := false
-	for i, g := range role.GrantsIn {
-		if g.FromRoleID == role.ID && g.Resource == resource {
-			role.GrantsIn = append(role.GrantsIn[:i], role.GrantsIn[i+1:]...)
-			found = true
-			break
-		}
-	}
-	if !found {
-		return ErrGrantNotFound
-	}
-	for i, g := range role.GrantsOut {
-		if g.ToRoleID == role.ID && g.Resource == resource {
-			role.GrantsOut = append(role.GrantsOut[:i], role.GrantsOut[i+1:]...)
-			break
-		}
-	}
-	if !hasGrant(role.GrantsIn, resource) {
-		delete(role.GrantedMap, resource)
-	}
-	role.ResetMatchCache()
-	return a.save()
+	return a.revokeDelegatedLocked(fromRole, toRole, res)
 }
 
 // revokeDelegatedLocked 撤销委托授权，并级联清理子树中相同资源的子授权。
@@ -191,7 +159,7 @@ func delGrant(grants []model.GrantInfo, fromRoleID string, resource string) []mo
 	return grants
 }
 
-// GrantsTo 返回指定角色接收到的外部授权记录（副本，不含自授权）。
+// GrantsTo 返回指定角色接收到的授权记录。
 func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -200,16 +168,10 @@ func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	var result []model.GrantInfo
-	for _, g := range role.GrantsIn {
-		if g.FromRoleID != g.ToRoleID {
-			result = append(result, g)
-		}
-	}
-	return result, nil
+	return append([]model.GrantInfo(nil), role.GrantsIn...), nil
 }
 
-// GrantsFrom 返回指定角色发出的外部授权记录（副本，不含自授权）。
+// GrantsFrom 返回指定角色发出的授权记录。
 func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -218,16 +180,10 @@ func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	var result []model.GrantInfo
-	for _, g := range role.GrantsOut {
-		if g.FromRoleID != g.ToRoleID {
-			result = append(result, g)
-		}
-	}
-	return result, nil
+	return append([]model.GrantInfo(nil), role.GrantsOut...), nil
 }
 
-// AllGrants 返回系统中所有唯一的外部授权记录（不含自授权）。
+// AllGrants 返回系统中所有唯一的授权记录。
 func (a *Authorizer) AllGrants() []model.GrantInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -237,9 +193,6 @@ func (a *Authorizer) AllGrants() []model.GrantInfo {
 	var walk func(role *model.RoleNode)
 	walk = func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
-			if g.FromRoleID == g.ToRoleID {
-				continue
-			}
 			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
 			if !seen[key] {
 				seen[key] = true

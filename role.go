@@ -153,10 +153,10 @@ func (a *Authorizer) RoleResources(roleID string) ([]string, error) {
 
 	seen := make(map[string]bool)
 	var result []string
-	for _, g := range role.GrantsIn {
-		if !seen[g.Resource] {
-			seen[g.Resource] = true
-			result = append(result, g.Resource)
+	for r := range role.GrantedMap {
+		if !seen[r] {
+			seen[r] = true
+			result = append(result, r)
 		}
 	}
 	return result, nil
@@ -176,17 +176,11 @@ func roleToInfo(role *model.RoleNode) *RoleInfo {
 	if role.Parent != nil {
 		info.ParentID = role.Parent.ID
 	}
-	for _, g := range role.GrantsIn {
-		info.Resources = append(info.Resources, g.Resource)
-		if g.FromRoleID != g.ToRoleID {
-			info.GrantsIn = append(info.GrantsIn, g)
-		}
+	for r := range role.GrantedMap {
+		info.Resources = append(info.Resources, r)
 	}
-	for _, g := range role.GrantsOut {
-		if g.FromRoleID != g.ToRoleID {
-			info.GrantsOut = append(info.GrantsOut, g)
-		}
-	}
+	info.GrantsIn = append([]model.GrantInfo(nil), role.GrantsIn...)
+	info.GrantsOut = append([]model.GrantInfo(nil), role.GrantsOut...)
 	for childID := range role.Children {
 		info.SubRoleIDs = append(info.SubRoleIDs, childID)
 	}

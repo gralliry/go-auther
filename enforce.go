@@ -38,8 +38,8 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 		return cached, nil
 	}
 
-	for _, g := range role.GrantsIn {
-		if match.Match(g.Resource, normalized) {
+	for pattern := range role.GrantedMap {
+		if match.Match(pattern, normalized) {
 			role.SetMatchCache(normalized, true)
 			return true, nil
 		}
@@ -65,10 +65,10 @@ func (a *Authorizer) Permissions(userID string) ([]string, error) {
 
 	seen := make(map[string]bool)
 	var result []string
-	for _, g := range role.GrantsIn {
-		if !seen[g.Resource] {
-			seen[g.Resource] = true
-			result = append(result, g.Resource)
+	for r := range role.GrantedMap {
+		if !seen[r] {
+			seen[r] = true
+			result = append(result, r)
 		}
 	}
 	return result, nil
