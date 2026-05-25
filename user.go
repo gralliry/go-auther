@@ -38,19 +38,26 @@ func (a *Authorizer) CreateUser(roleID, userID string) error {
 	return a.save()
 }
 
-// DeleteUser 从系统中删除指定用户。
-func (a *Authorizer) DeleteUser(userID string) error {
+// DeleteUser 从指定角色中删除用户。roleID 必须与用户所属角色匹配。
+func (a *Authorizer) DeleteUser(roleID, userID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	role := a.roles[roleID]
+	if role == nil {
+		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
+	}
 
 	user := a.users[userID]
 	if user == nil {
 		return fmt.Errorf("%w: %s", ErrUserNotFound, userID)
 	}
 
-	if user.Role != nil {
-		delete(user.Role.Users, userID)
+	if user.Role == nil || user.Role.ID != roleID {
+		return fmt.Errorf("%w: user %s does not belong to role %s", ErrUserNotFound, userID, roleID)
 	}
+
+	delete(role.Users, userID)
 	delete(a.users, userID)
 
 	return a.save()

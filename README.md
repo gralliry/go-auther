@@ -50,7 +50,7 @@ Permissions are **explicit-only**: a role only has access to resources granted t
 
 ```
 root (/**)
- └── admin (/user/* from root)
+ └── admin (/user/*, /reports/* from root)
        └── editor (/data/* from root, /reports/* from admin)
              └── user: alice
 
@@ -66,8 +66,9 @@ alice cannot: /user/create (not granted), /** (no inheritance)
 func (a *Authorizer) CreateRole(parentID, roleID string) error
 func (a *Authorizer) DeleteRole(roleID string) error
 func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error)
-func (a *Authorizer) Roles() []*RoleInfo
-func (a *Authorizer) RoleResources(roleID string) ([]string, error)
+func (a *Authorizer) GetAllRoles() []*RoleInfo
+func (a *Authorizer) GetSubRoles(roleID string) ([]*RoleInfo, error)
+func (a *Authorizer) GetResource(roleID string) ([]string, error)
 ```
 
 `DeleteRole` cascades: sub-roles and their users are removed, related grants cleaned up. Root cannot be deleted.
@@ -77,9 +78,9 @@ func (a *Authorizer) RoleResources(roleID string) ([]string, error)
 ```go
 func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error
 func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error
-func (a *Authorizer) GrantsTo(roleID string) ([]GrantInfo, error)
-func (a *Authorizer) GrantsFrom(roleID string) ([]GrantInfo, error)
-func (a *Authorizer) AllGrants() []GrantInfo
+func (a *Authorizer) GetGrantsTo(roleID string) ([]GrantInfo, error)
+func (a *Authorizer) GetGrantsFrom(roleID string) ([]GrantInfo, error)
+func (a *Authorizer) GetAllGrants() []GrantInfo
 ```
 
 `fromRoleID` must be an ancestor of `toRoleID`. Self-grant is not allowed. `Revoke` cascades: all descendant grants for the same resource are removed.
@@ -88,7 +89,7 @@ func (a *Authorizer) AllGrants() []GrantInfo
 
 ```go
 func (a *Authorizer) CreateUser(roleID, userID string) error
-func (a *Authorizer) DeleteUser(userID string) error
+func (a *Authorizer) DeleteUser(roleID, userID string) error
 func (a *Authorizer) GetUser(userID string) (*UserInfo, error)
 func (a *Authorizer) GetUsers() []*UserInfo
 ```

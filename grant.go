@@ -159,8 +159,8 @@ func delGrant(grants []model.GrantInfo, fromRoleID string, resource string) []mo
 	return grants
 }
 
-// GrantsTo 返回指定角色接收到的授权记录。
-func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
+// GetGrantsTo 返回指定角色接收到的授权记录。
+func (a *Authorizer) GetGrantsTo(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -171,8 +171,8 @@ func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
 	return append([]model.GrantInfo(nil), role.GrantsIn...), nil
 }
 
-// GrantsFrom 返回指定角色发出的授权记录。
-func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
+// GetGrantsFrom 返回指定角色发出的授权记录。
+func (a *Authorizer) GetGrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -183,8 +183,8 @@ func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	return append([]model.GrantInfo(nil), role.GrantsOut...), nil
 }
 
-// AllGrants 返回系统中所有唯一的授权记录。
-func (a *Authorizer) AllGrants() []model.GrantInfo {
+// GetAllGrants 返回系统中所有唯一的授权记录。
+func (a *Authorizer) GetAllGrants() []model.GrantInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 

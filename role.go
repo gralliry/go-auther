@@ -124,8 +124,8 @@ func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error) {
 	return roleToInfo(role), nil
 }
 
-// Roles 返回系统中所有角色的信息列表。
-func (a *Authorizer) Roles() []*RoleInfo {
+// GetAllRoles 返回系统中所有角色的信息列表。
+func (a *Authorizer) GetAllRoles() []*RoleInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -141,8 +141,25 @@ func (a *Authorizer) Roles() []*RoleInfo {
 	return result
 }
 
-// RoleResources 返回角色当前生效的所有资源权限模式。
-func (a *Authorizer) RoleResources(roleID string) ([]string, error) {
+// GetSubRoles 返回指定角色的直接子角色列表。
+func (a *Authorizer) GetSubRoles(roleID string) ([]*RoleInfo, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	role := a.roles[roleID]
+	if role == nil {
+		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
+	}
+
+	result := make([]*RoleInfo, 0, len(role.Children))
+	for _, child := range role.Children {
+		result = append(result, roleToInfo(child))
+	}
+	return result, nil
+}
+
+// GetResource 返回角色当前生效的所有资源权限模式。
+func (a *Authorizer) GetResource(roleID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
