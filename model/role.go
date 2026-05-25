@@ -5,8 +5,8 @@ type RoleNode struct {
 	ID         string
 	Parent     *RoleNode
 	Children   map[string]*RoleNode
-	Resources  map[string]bool
-	GrantedMap map[string]bool // 索引：精确资源键 → true，O(1) 查找
+	Resources  map[Resource]bool
+	GrantedMap map[Resource]bool // 索引：精确资源键 → true，O(1) 查找
 	GrantsIn   []GrantInfo
 	GrantsOut  []GrantInfo
 	Users      map[string]*UserNode
@@ -42,14 +42,14 @@ func (r *RoleNode) ResetMatchCache() {
 type GrantInfo struct {
 	FromRoleID string
 	ToRoleID   string
-	Resource   string
+	Resource   Resource
 }
 
 // RoleInfo 是对外暴露的角色信息视图。
 type RoleInfo struct {
 	ID         string
 	ParentID   string
-	Resources  []string
+	Resources  []Resource
 	SubRoleIDs []string
 	UserIDs    []string
 	GrantsIn   []GrantInfo

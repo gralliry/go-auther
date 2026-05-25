@@ -34,6 +34,7 @@ import (
 
 // 类型别名：外部只需 import "auther" 即可使用以下类型。
 type (
+	Resource       = model.Resource
 	GrantInfo      = model.GrantInfo
 	RoleInfo       = model.RoleInfo
 	UserInfo       = model.UserInfo
@@ -81,8 +82,8 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 	a.root = &model.RoleNode{
 		ID:         "root",
 		Children:   make(map[string]*model.RoleNode),
-		Resources:  map[string]bool{"/**": true},
-		GrantedMap: make(map[string]bool),
+		Resources:  map[Resource]bool{"/**": true},
+		GrantedMap: make(map[Resource]bool),
 		Users:      make(map[string]*model.UserNode),
 	}
 	a.roles["root"] = a.root
@@ -124,8 +125,8 @@ func (a *Authorizer) buildRoles(roles []model.RoleSnapshot) (rootID string, clea
 		role := &model.RoleNode{
 			ID:         rs.ID,
 			Children:   make(map[string]*model.RoleNode),
-			Resources:  make(map[string]bool),
-			GrantedMap: make(map[string]bool),
+			Resources:  make(map[Resource]bool),
+			GrantedMap: make(map[Resource]bool),
 			Users:      make(map[string]*model.UserNode),
 		}
 		for _, res := range rs.Resources {
@@ -148,8 +149,8 @@ func (a *Authorizer) buildRoles(roles []model.RoleSnapshot) (rootID string, clea
 			a.roles["root"] = &model.RoleNode{
 				ID:         "root",
 				Children:   make(map[string]*model.RoleNode),
-				Resources:  map[string]bool{"/**": true},
-				GrantedMap: make(map[string]bool),
+				Resources:  map[Resource]bool{"/**": true},
+				GrantedMap: make(map[Resource]bool),
 				Users:      make(map[string]*model.UserNode),
 			}
 		}
@@ -213,7 +214,7 @@ func (a *Authorizer) loadGrants(grants []model.GrantSnapshot) (cleansed bool) {
 			cleansed = true
 			continue
 		}
-		key := gs.FromRoleID + "|" + gs.ToRoleID + "|" + gs.Resource
+		key := gs.FromRoleID + "|" + gs.ToRoleID + "|" + string(gs.Resource)
 		if seen[key] {
 			cleansed = true
 			continue
@@ -236,7 +237,7 @@ func (a *Authorizer) snapshot() *model.PolicySnapshot {
 	walk = func(role *model.RoleNode) {
 		rs := model.RoleSnapshot{
 			ID:        role.ID,
-			Resources: make([]string, 0, len(role.Resources)),
+			Resources: make([]Resource, 0, len(role.Resources)),
 		}
 		if role.Parent != nil {
 			rs.ParentID = role.Parent.ID
@@ -244,7 +245,7 @@ func (a *Authorizer) snapshot() *model.PolicySnapshot {
 		for res := range role.Resources {
 			rs.Resources = append(rs.Resources, res)
 		}
-		sort.Strings(rs.Resources)
+		sort.Slice(rs.Resources, func(i, j int) bool { return rs.Resources[i] < rs.Resources[j] })
 		snap.Roles = append(snap.Roles, rs)
 		for _, user := range role.Users {
 			snap.Users = append(snap.Users, model.UserSnapshot{ID: user.ID, RoleID: user.Role.ID})
@@ -259,7 +260,7 @@ func (a *Authorizer) snapshot() *model.PolicySnapshot {
 	var collectGrants func(role *model.RoleNode)
 	collectGrants = func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
-			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
+			key := g.FromRoleID + "|" + g.ToRoleID + "|" + string(g.Resource)
 			if !seen[key] {
 				seen[key] = true
 				snap.Grants = append(snap.Grants, model.GrantSnapshot{

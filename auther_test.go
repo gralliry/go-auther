@@ -608,7 +608,7 @@ func TestSelfHealOrphanRole(t *testing.T) {
 	// Role with non-existent ParentID → reattached to root.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 			{ID: "orphan", ParentID: "bogus"},
 		},
 	})
@@ -635,7 +635,7 @@ func TestSelfHealMissingRoot(t *testing.T) {
 	// No role with empty ParentID → auto-create root with "/**".
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "child", ParentID: "root", Resources: []string{"/x"}},
+			{ID: "child", ParentID: "root", Resources: []Resource{"/x"}},
 		},
 	})
 
@@ -665,7 +665,7 @@ func TestSelfHealMultipleRoots(t *testing.T) {
 	// Two roles with empty ParentID → first is root, second becomes child of root.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 			{ID: "fake_root", ParentID: ""},
 		},
 	})
@@ -680,7 +680,7 @@ func TestSelfHealDanglingUser(t *testing.T) {
 	// User with non-existent RoleID → dropped.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 		},
 		Users: []model.UserSnapshot{
 			{ID: "ghost", RoleID: "bogus"},
@@ -702,7 +702,7 @@ func TestSelfHealDanglingGrantFrom(t *testing.T) {
 	// Grant with non-existent FromRoleID → dropped.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 		},
 		Grants: []model.GrantSnapshot{
 			{FromRoleID: "ghost", ToRoleID: "root", Resource: "/x"},
@@ -719,7 +719,7 @@ func TestSelfHealDanglingGrantTo(t *testing.T) {
 	// Grant with non-existent ToRoleID → dropped.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 		},
 		Grants: []model.GrantSnapshot{
 			{FromRoleID: "root", ToRoleID: "ghost", Resource: "/x"},
@@ -736,7 +736,7 @@ func TestSelfHealNotAncestorGrant(t *testing.T) {
 	// Grant where From is not ancestor of To → dropped.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 			{ID: "role_a", ParentID: "root"},
 			{ID: "role_b", ParentID: "root"},
 		},
@@ -755,7 +755,7 @@ func TestSelfHealDuplicateGrant(t *testing.T) {
 	// Duplicate grant (same From+To+Resource) → keep one, drop rest.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 			{ID: "child", ParentID: "root"},
 		},
 		Grants: []model.GrantSnapshot{
@@ -777,7 +777,7 @@ func TestSelfHealSelfGrant(t *testing.T) {
 	// Self-grant in snapshot → converted to role's own Resources, not as grant record.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 		},
 		Grants: []model.GrantSnapshot{
 			{FromRoleID: "root", ToRoleID: "root", Resource: "/self"},
@@ -808,7 +808,7 @@ func TestSelfHealComplete(t *testing.T) {
 	// Full scenario: multiple corruption types at once.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []string{"/**"}},
+			{ID: "root", Resources: []Resource{"/**"}},
 			{ID: "orphan", ParentID: "bogus"},
 			{ID: "child", ParentID: "root"},
 		},
@@ -1001,7 +1001,7 @@ func TestSelfReferencingParentHealed(t *testing.T) {
 	// root's ParentID = "root" (self-reference) → healed: Parent stays nil.
 	a := newHealed(t, &model.PolicySnapshot{
 		Roles: []model.RoleSnapshot{
-			{ID: "root", ParentID: "root", Resources: []string{"/**"}},
+			{ID: "root", ParentID: "root", Resources: []Resource{"/**"}},
 			{ID: "child", ParentID: "root"},
 		},
 	})

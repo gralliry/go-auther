@@ -11,7 +11,7 @@ type PolicySnapshot struct {
 type RoleSnapshot struct {
 	ID        string   `json:"id"`
 	ParentID  string   `json:"parent_id"`
-	Resources []string `json:"resources"`
+	Resources []Resource `json:"resources"`
 }
 
 // UserSnapshot 是用于序列化的扁平用户记录。
@@ -24,5 +24,5 @@ type UserSnapshot struct {
 type GrantSnapshot struct {
 	FromRoleID string `json:"from_role_id"`
 	ToRoleID   string `json:"to_role_id"`
-	Resource   string `json:"resource"`
+	Resource   Resource `json:"resource"`
 }

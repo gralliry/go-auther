@@ -49,7 +49,7 @@ func copySnapshot(s *model.PolicySnapshot) *model.PolicySnapshot {
 	c.Roles = make([]model.RoleSnapshot, len(s.Roles))
 	for i, r := range s.Roles {
 		c.Roles[i] = r
-		c.Roles[i].Resources = make([]string, len(r.Resources))
+		c.Roles[i].Resources = make([]model.Resource, len(r.Resources))
 		copy(c.Roles[i].Resources, r.Resources)
 	}
 

@@ -24,8 +24,8 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 		ID:         roleID,
 		Parent:     parent,
 		Children:   make(map[string]*model.RoleNode),
-		Resources:  make(map[string]bool),
-		GrantedMap: make(map[string]bool),
+		Resources:  make(map[Resource]bool),
+		GrantedMap: make(map[Resource]bool),
 		Users:      make(map[string]*model.UserNode),
 	}
 	a.roles[roleID] = role
@@ -92,7 +92,7 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 		if excluded[r.ID] {
 			continue
 		}
-		r.GrantedMap = make(map[string]bool)
+		r.GrantedMap = make(map[Resource]bool)
 		for _, g := range r.GrantsIn {
 			if !excluded[g.FromRoleID] {
 				r.GrantedMap[g.Resource] = true
@@ -133,7 +133,7 @@ func (a *Authorizer) Roles() []*model.RoleInfo {
 
 // RoleResources 返回角色当前生效的所有资源权限模式。
 // 包含角色自身资源和显式的 GrantsIn，不包含自动继承。
-func (a *Authorizer) RoleResources(roleID string) ([]string, error) {
+func (a *Authorizer) RoleResources(roleID string) ([]Resource, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -142,8 +142,8 @@ func (a *Authorizer) RoleResources(roleID string) ([]string, error) {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	seen := make(map[string]bool)
-	var result []string
+	seen := make(map[Resource]bool)
+	var result []Resource
 	for res := range role.Resources {
 		if !seen[res] {
 			seen[res] = true
@@ -164,7 +164,7 @@ func roleToInfo(role *model.RoleNode) *model.RoleInfo {
 	info := &model.RoleInfo{
 		ID:         role.ID,
 		ParentID:   "",
-		Resources:  make([]string, 0, len(role.Resources)),
+		Resources:  make([]Resource, 0, len(role.Resources)),
 		SubRoleIDs: make([]string, 0, len(role.Children)),
 		UserIDs:    make([]string, 0, len(role.Users)),
 		GrantsIn:   append([]model.GrantInfo(nil), role.GrantsIn...),
