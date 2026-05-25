@@ -1,40 +1,13 @@
 # Auther
 
-[![Go Reference](https://pkg.go.dev/badge/auther.svg)](https://pkg.go.dev/auther)
+[![Go Reference](https://pkg.go.dev/badge/github.com/gralliry/auther.svg)](https://pkg.go.dev/github.com/gralliry/auther)
 
-Auther is a role-tree-based authorization library for Go. It models organization hierarchies with explicit resource delegation — no implicit inheritance, no surprises.
-
-## Concepts
-
-| Concept | Description |
-|---|---|
-| **Role** | A node in the role tree. The root role (`root`) is auto-created with the `/**` resource. Roles can create sub-roles and users. |
-| **User** | A passive leaf created by a role. Users inherit only the permissions of their creating role and cannot manage resources or create other entities. |
-| **Resource** | A path-like string (e.g. `/user/create`, `/data/**`) supporting glob matching with `*` (single segment) and `**` (zero or more segments). |
-| **Grant** | An explicit resource delegation from one role to a descendant. Permissions do **not** auto-inherit — a parent must explicitly grant resources to sub-roles. |
-
-### Explicit-only model
-
-Promotions do **not** flow down the tree automatically. A child role only has access to:
-
-1. Resources added directly to itself (via self-grant)
-2. Resources explicitly granted to it by an ancestor
-
-```
-root (has /**)
- └── admin (has /user/* via self-grant)
-       └── editor (has /data/* via self-grant, plus /user/* via grant from admin)
-             └── user: alice
-
-// alice can access /data/read (editor's own)
-// alice can access /user/create (grant from admin)
-// alice CANNOT access /** (root's resources — no auto-inheritance)
-```
+Role-tree authorization library for Go. Explicit resource delegation with glob matching — no implicit inheritance.
 
 ## Installation
 
 ```sh
-go get auther
+go get github.com/gralliry/auther
 ```
 
 ## Quick start
@@ -44,32 +17,44 @@ package main
 
 import (
     "fmt"
-    "auther"
+    "github.com/gralliry/auther"
 )
 
 func main() {
-    // Create an authorizer without persistence (in-memory only).
     a, _ := auther.NewAuthorizer(nil)
 
-    // Build a role hierarchy.
+    // Build hierarchy: root -> admin -> editor
     a.CreateRole("root", "admin")
     a.CreateRole("admin", "editor")
 
-    // Give roles their own resources.
-    a.GrantResource("admin", "admin", "/user/*")
-    a.GrantResource("editor", "editor", "/data/*")
+    // Self-grant resources to roles
+    a.Grant("admin", "admin", "/user/*")
+    a.Grant("editor", "editor", "/data/*")
 
-    // Delegate /reports/* from admin to editor.
-    a.GrantResource("admin", "editor", "/reports/*")
+    // Delegate /reports/* from admin to editor
+    a.Grant("admin", "editor", "/reports/*")
 
-    // Create users.
     a.CreateUser("editor", "alice")
 
-    // Check permissions.
-    ok, _ := a.Enforce("alice", "/data/read")   // true (own resource)
-    ok, _ = a.Enforce("alice", "/reports/q1")   // true (granted by admin)
-    ok, _ = a.Enforce("alice", "/user/create")  // false (not granted to editor)
+    ok, _ := a.Enforce("alice", "/data/read")  // true (own)
+    ok, _ = a.Enforce("alice", "/reports/q1")  // true (granted)
+    ok, _ = a.Enforce("alice", "/user/create") // false (not granted)
+    fmt.Println(ok)
 }
+```
+
+## Concepts
+
+Permissions are **explicit-only**: a role only has access to resources directly granted to it via self-grant or delegated by an ancestor. Root's `/**` does not leak to children.
+
+```
+root (/**)
+ └── admin (/user/*)
+       └── editor (/data/*, /reports/* from admin)
+             └── user: alice
+
+alice can:  /data/read, /reports/q1
+alice cannot: /user/create (not granted), /** (no inheritance)
 ```
 
 ## API
@@ -80,35 +65,23 @@ func main() {
 func (a *Authorizer) CreateRole(parentID, roleID string) error
 func (a *Authorizer) DeleteRole(roleID string) error
 func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error)
-func (a *Authorizer) GetAllRoles() []*RoleInfo
-func (a *Authorizer) GetEffectiveRoleResources(roleID string) ([]string, error)
+func (a *Authorizer) Roles() []*RoleInfo
+func (a *Authorizer) RoleResources(roleID string) ([]string, error)
 ```
 
-`DeleteRole` cascades: all sub-roles and their users are removed. Grants involving deleted roles are cleaned up. The root role cannot be deleted.
-
-### Resources (via self-grant)
-
-```go
-// Add a resource to a role's own set.
-a.GrantResource("admin", "admin", "/user/*")
-
-// Remove it.
-a.RevokeResource("admin", "admin", "/user/*")
-```
+`DeleteRole` cascades: sub-roles and their users are removed, related grants cleaned up. Root cannot be deleted.
 
 ### Grants
 
 ```go
-func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error
-func (a *Authorizer) RevokeResource(fromRoleID, toRoleID, resource string) error
-func (a *Authorizer) GetGrantsToRole(roleID string) ([]RoleGrant, error)
-func (a *Authorizer) GetGrantsFromRole(roleID string) ([]RoleGrant, error)
-func (a *Authorizer) GetAllGrants() []RoleGrant
+func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error
+func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error
+func (a *Authorizer) GrantsTo(roleID string) ([]GrantInfo, error)
+func (a *Authorizer) GrantsFrom(roleID string) ([]GrantInfo, error)
+func (a *Authorizer) AllGrants() []GrantInfo
 ```
 
-`GrantResource` requires `fromRoleID` to be an ancestor (or self) of `toRoleID`. When the two IDs are equal, the resource is added directly to the role rather than creating a grant record.
-
-`RevokeResource` cascades: grants for the same resource within the subtree are also removed.
+When `fromRoleID == toRoleID`, the resource is added directly to the role (self-grant). Otherwise `fromRoleID` must be an ancestor of `toRoleID`. `Revoke` cascades: all descendant grants for the same resource are removed.
 
 ### Users
 
@@ -116,51 +89,30 @@ func (a *Authorizer) GetAllGrants() []RoleGrant
 func (a *Authorizer) CreateUser(roleID, userID string) error
 func (a *Authorizer) DeleteUser(userID string) error
 func (a *Authorizer) GetUser(userID string) (*UserInfo, error)
-func (a *Authorizer) GetAllUsers() []*UserInfo
+func (a *Authorizer) Users() []*UserInfo
 ```
 
 ### Enforcement
 
 ```go
 func (a *Authorizer) Enforce(userID, resource string) (bool, error)
-func (a *Authorizer) GetUserPermissions(userID string) ([]string, error)
+func (a *Authorizer) Permissions(userID string) ([]string, error)
 ```
 
-`Enforce` checks a user's role resources and all grants received by that role. It does **not** walk up ancestor roles — only the user's direct role is checked.
-
-### Errors
-
-All sentinel errors are defined for use with `errors.Is`:
-
-| Error | Meaning |
-|---|---|
-| `ErrUserNotFound` | User ID does not exist |
-| `ErrDuplicateUser` | User ID already exists |
-| `ErrRoleNotFound` | Role ID does not exist |
-| `ErrDuplicateRole` | Role ID already exists |
-| `ErrGrantNotFound` | Grant (From, To, Resource) not found |
-| `ErrDuplicateGrant` | Grant already exists |
-| `ErrNotAncestor` | Grantor is not an ancestor of the grantee |
-| `ErrRootRoleDelete` | Attempted to delete the root role |
-
 ## Resource patterns
-
-Resources follow filesystem-path semantics with two wildcards:
 
 | Pattern | Matches |
 |---|---|
 | `/user/create` | Exact match only |
-| `/user/*` | One segment: `/user/123`, `/user/edit` |
+| `/user/*` | Single segment: `/user/123`, `/user/edit` |
 | `/data/**` | Zero or more segments: `/data`, `/data/a/b/c` |
 | `/**` | Everything |
 
-Matching uses an iterative backtracking algorithm with zero heap allocation for fast matching in hot enforcement paths.
+Zero-allocation iterative backtracking matcher.
 
 ## Persistence
 
-Auther uses a **write-through** pattern: every mutation is immediately persisted via the adapter.
-
-### Adapter interface
+Write-through: every mutation is immediately persisted via the adapter.
 
 ```go
 type Adapter interface {
@@ -169,72 +121,65 @@ type Adapter interface {
 }
 ```
 
-### Built-in adapters
-
-**Memory** (for testing and development):
+**Memory** (testing / dev):
 
 ```go
-import memoryadapter "auther/adapters/memory"
+import memoryadapter "github.com/gralliry/auther/adapters/memory"
 
-adapter := memoryadapter.NewMemoryAdapter()
-a, _ := auther.NewAuthorizer(adapter)
+a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
 ```
 
-**File** (JSON on disk, atomic writes via temp + rename):
+**File** (JSON, atomic writes):
 
 ```go
-import fileadapter "auther/adapters/file"
+import fileadapter "github.com/gralliry/auther/adapters/file"
 
-adapter, _ := fileadapter.NewFileAdapter("/path/to/policy.json")
-a, _ := auther.NewAuthorizer(adapter)
+a, _ := auther.NewAuthorizer(fileadapter.NewFileAdapter("/path/to/policy.json"))
 ```
 
-### No adapter
-
-Pass `nil` to `NewAuthorizer` for an in-memory-only authorizer with no persistence:
-
-```go
-a, _ := auther.NewAuthorizer(nil)
-```
+**No adapter:** pass `nil` for in-memory-only.
 
 ### Self-healing
 
-When loading from an adapter, `buildTree` validates and repairs corrupted data:
-
-- Roles with dangling `ParentID` are reattached to root
-- Users referencing non-existent roles are dropped
-- Grants with missing From/To roles are dropped
-- Grants violating the ancestor constraint are dropped
-- Duplicate grants are deduplicated
-- Self-grants in the grant list are merged into role resources
-
-The cleansed snapshot is written back automatically.
+On load, corrupted data is repaired: orphan roles reattached to root, dangling users/grants dropped, ancestor violations removed, duplicates deduplicated. Result is written back automatically.
 
 ## Performance
 
-Benchmarks on the enforcement hot path:
+Enforcement hot path (i7-12700H):
 
 | Scenario | Time |
 |---|---|
-| Exact match | ~39 ns |
-| Wildcard hit | ~44 ns |
-| Grant-based hit | ~49 ns |
-| Literal miss (no wildcards) | ~40 ns |
-| Full scan miss | ~47 ns |
+| Exact match (GrantedMap O(1)) | ~38 ns |
+| Wildcard match | ~40 ns |
+| Grant-based hit | ~44 ns |
+| Literal miss | ~39 ns |
 
-Resource matching benchmarks:
+Glob matching:
 
 | Case | Time |
 |---|---|
-| Exact match | ~1.6 ns |
-| Literal miss | ~4.6 ns |
-| Single wildcard | ~40 ns |
-| Double wildcard deep | ~71 ns |
+| Exact match | ~2 ns |
+| Literal miss | ~5 ns |
+| Single wildcard `*` | ~38 ns |
+| Double wildcard `**` deep | ~66 ns |
 
-## Thread safety
+## Errors
 
-`Authorizer` is safe for concurrent use. All public methods are protected by a `sync.RWMutex`. Read operations (Enforce, GetRole, etc.) acquire a read lock; write operations (CreateRole, GrantResource, etc.) acquire a write lock.
+All sentinel errors work with `errors.Is`:
+
+| Error | Meaning |
+|---|---|
+| `ErrUserNotFound` | User does not exist |
+| `ErrDuplicateUser` | User already exists |
+| `ErrRoleNotFound` | Role does not exist |
+| `ErrDuplicateRole` | Role already exists |
+| `ErrGrantNotFound` | Grant (From, To, Resource) not found |
+| `ErrDuplicateGrant` | Grant already exists |
+| `ErrNotAncestor` | Grantor is not an ancestor of grantee |
+| `ErrCircularRoleHierarchy` | Cycle detected in role tree |
+| `ErrInvalidResource` | Resource path invalid |
+| `ErrRootRoleDelete` | Cannot delete root role |
 
 ## License
 
-MIT.
+MIT
