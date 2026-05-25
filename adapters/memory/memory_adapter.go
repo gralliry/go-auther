@@ -4,13 +4,13 @@ package memoryadapter
 import (
 	"sync"
 
-	"auther"
+	"auther/model"
 )
 
 // MemoryAdapter stores policy snapshots in memory.
 type MemoryAdapter struct {
 	mu       sync.RWMutex
-	snapshot *auther.PolicySnapshot
+	snapshot *model.PolicySnapshot
 }
 
 // NewMemoryAdapter creates a new in-memory adapter.
@@ -19,7 +19,7 @@ func NewMemoryAdapter() *MemoryAdapter {
 }
 
 // Load returns the stored policy snapshot, or nil if none exists.
-func (a *MemoryAdapter) Load() (*auther.PolicySnapshot, error) {
+func (a *MemoryAdapter) Load() (*model.PolicySnapshot, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -31,7 +31,7 @@ func (a *MemoryAdapter) Load() (*auther.PolicySnapshot, error) {
 }
 
 // Save persists a policy snapshot in memory.
-func (a *MemoryAdapter) Save(snapshot *auther.PolicySnapshot) error {
+func (a *MemoryAdapter) Save(snapshot *model.PolicySnapshot) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -40,23 +40,23 @@ func (a *MemoryAdapter) Save(snapshot *auther.PolicySnapshot) error {
 }
 
 // copySnapshot creates a deep copy of a PolicySnapshot.
-func copySnapshot(s *auther.PolicySnapshot) *auther.PolicySnapshot {
+func copySnapshot(s *model.PolicySnapshot) *model.PolicySnapshot {
 	if s == nil {
 		return nil
 	}
-	c := &auther.PolicySnapshot{}
+	c := &model.PolicySnapshot{}
 
-	c.Roles = make([]auther.RoleSnapshot, len(s.Roles))
+	c.Roles = make([]model.RoleSnapshot, len(s.Roles))
 	for i, r := range s.Roles {
 		c.Roles[i] = r
 		c.Roles[i].Resources = make([]string, len(r.Resources))
 		copy(c.Roles[i].Resources, r.Resources)
 	}
 
-	c.Users = make([]auther.UserSnapshot, len(s.Users))
+	c.Users = make([]model.UserSnapshot, len(s.Users))
 	copy(c.Users, s.Users)
 
-	c.Grants = make([]auther.GrantSnapshot, len(s.Grants))
+	c.Grants = make([]model.GrantSnapshot, len(s.Grants))
 	copy(c.Grants, s.Grants)
 
 	return c

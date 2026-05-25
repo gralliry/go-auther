@@ -1,0 +1,108 @@
+<h2>Auther 项目 — 当前架构与性能概况</h2>
+<p class="subtitle">D:\Code\Golang\Auther — 角色树权限管理库</p>
+
+<div class="section">
+  <h3>当前项目结构</h3>
+  <div class="mockup">
+    <div class="mockup-header">文件布局</div>
+    <div class="mockup-body">
+      <pre style="font-size:13px;line-height:1.6;margin:0">
+auther/
+├── auther.go           ← 核心：Authorizer + buildTree + 树遍历
+├── enforce.go          ← Enforce / GetUserPermissions
+├── grant.go            ← GrantResource / RevokeResource / 授权查询
+├── role.go             ← CreateRole / DeleteRole / 角色查询
+├── user.go             ← CreateUser / DeleteUser / 用户查询
+├── resource.go         ← match / parseSegs / matchDP / normalize
+├── types.go            ← 所有数据结构和 DTO
+├── errors.go           ← 哨兵错误定义
+├── adapter.go          ← Adapter 接口
+├── *_test.go           ← 测试和 benchmark
+├── go.mod
+├── README.md
+├── adapters/
+│   ├── memory/         ← 内存适配器
+│   └── file/           ← JSON 文件适配器
+      </pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Benchmark 性能数据 (ns/op)</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">Match（资源匹配）</div>
+      <div class="mockup-body">
+        <table style="width:100%;font-size:13px">
+          <tr><td>Exact</td><td style="text-align:right">3.7 ns</td><td>✅ 极快</td></tr>
+          <tr><td>NoMatch Literal</td><td style="text-align:right">9.2 ns</td><td>✅ 快</td></tr>
+          <tr><td>Star (*)</td><td style="text-align:right">317 ns</td><td>⚠️ 中等</td></tr>
+          <tr><td>DoubleStar (**)</td><td style="text-align:right">433 ns</td><td>⚠️ 中等</td></tr>
+          <tr><td>Many DoubleStars</td><td style="text-align:right">429 ns</td><td>⚠️ 中等</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">Enforce（权限检查）</div>
+      <div class="mockup-body">
+        <table style="width:100%;font-size:13px">
+          <tr><td>Hit Exact</td><td style="text-align:right">386 ns</td><td>合格</td></tr>
+          <tr><td>Hit Wildcard</td><td style="text-align:right">380 ns</td><td>合格</td></tr>
+          <tr><td>Hit Grant</td><td style="text-align:right">719 ns</td><td>🔴 慢</td></tr>
+          <tr><td>Miss Literal</td><td style="text-align:right">415 ns</td><td>合格</td></tr>
+          <tr><td>Miss All</td><td style="text-align:right">421 ns</td><td>合格</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>性能瓶颈分析</h3>
+  <table style="width:100%;font-size:13px">
+    <tr style="background:var(--bg-secondary)">
+      <th>瓶颈</th><th>位置</th><th>影响</th><th>根因</th>
+    </tr>
+    <tr>
+      <td>🔴 parseSegs 重复分配</td>
+      <td>resource.go</td>
+      <td>每次匹配 150-200ns</td>
+      <td>每次调用分配 2 个 slice + 多次遍历</td>
+    </tr>
+    <tr>
+      <td>🔴 matchDP 分配 DP 表</td>
+      <td>resource.go</td>
+      <td>每次匹配 100-150ns</td>
+      <td>每次调用 make([]bool, ...) 分配新数组</td>
+    </tr>
+    <tr>
+      <td>🟡 Enforce 每次重新 normalize</td>
+      <td>enforce.go</td>
+      <td>每次 30-50ns</td>
+      <td>每次检查都规范化目标资源路径</td>
+    </tr>
+    <tr>
+      <td>🟡 Grants 线性扫描</td>
+      <td>enforce.go</td>
+      <td>O(n) 随授权数增长</td>
+      <td>GrantsIn 是切片，逐个 match 遍历</td>
+    </tr>
+    <tr>
+      <td>🟢 RWMutex</td>
+      <td>全局</td>
+      <td>约 25ns/op</td>
+      <td>已是最优，无需改进</td>
+    </tr>
+  </table>
+</div>
+
+<div class="section">
+  <h3>项目结构问题</h3>
+  <ul>
+    <li><strong>单包堆积：</strong>所有 .go 文件都在根目录同一 package，文件间职责模糊</li>
+    <li><strong>混入内部实现：</strong>types.go 同时暴露公开类型和内部快照 DTO</li>
+    <li><strong>缺少 internal/：</strong>parseSegs、matchDP 等内部实现对外可见</li>
+    <li><strong>缺少标准目录：</strong>无 cmd/、examples/ 等标准 Go 项目目录</li>
+  </ul>
+</div>

@@ -1,17 +1,17 @@
 package auther
 
-// Adapter defines the persistence interface for Auther policies.
-//
-// Implementations must be safe for concurrent use. The Load method is called
-// once during Authorizer construction; Save is called after every mutation
-// (write-through pattern).
-type Adapter interface {
-	// Load returns the full policy snapshot from storage.
-	// If no data exists yet, return nil for the snapshot with no error.
-	Load() (*PolicySnapshot, error)
+import "auther/model"
 
-	// Save persists the full policy snapshot to storage.
-	// Implementations should use atomic writes (e.g., temp file + rename)
-	// to prevent data corruption.
-	Save(snapshot *PolicySnapshot) error
+// Adapter 定义了 Auther 策略持久化的接口。
+//
+// 实现必须是并发安全的。Load 方法在 Authorizer 构造时调用一次；
+// Save 在每次数据变更后调用（写透模式）。
+type Adapter interface {
+	// Load 从存储中加载完整的策略快照。
+	// 如果尚无数据存在，应返回 nil 快照且不报错。
+	Load() (*model.PolicySnapshot, error)
+
+	// Save 将完整的策略快照持久化到存储中。
+	// 实现应使用原子写入（例如临时文件 + 重命名）以防止数据损坏。
+	Save(snapshot *model.PolicySnapshot) error
 }

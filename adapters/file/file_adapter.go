@@ -11,7 +11,7 @@ import (
 	"os"
 	"sync"
 
-	"auther"
+	"auther/model"
 )
 
 // FileAdapter is a JSON file-backed adapter for Auther policy persistence.
@@ -28,7 +28,7 @@ func NewFileAdapter(filePath string) *FileAdapter {
 
 // Load reads the policy snapshot from the JSON file.
 // Returns nil if the file does not exist.
-func (fa *FileAdapter) Load() (*auther.PolicySnapshot, error) {
+func (fa *FileAdapter) Load() (*model.PolicySnapshot, error) {
 	fa.mu.Lock()
 	defer fa.mu.Unlock()
 
@@ -40,7 +40,7 @@ func (fa *FileAdapter) Load() (*auther.PolicySnapshot, error) {
 		return nil, err
 	}
 
-	var snap auther.PolicySnapshot
+	var snap model.PolicySnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (fa *FileAdapter) Load() (*auther.PolicySnapshot, error) {
 
 // Save persists the policy snapshot to the JSON file.
 // Uses atomic write: writes to temp file, then renames.
-func (fa *FileAdapter) Save(snapshot *auther.PolicySnapshot) error {
+func (fa *FileAdapter) Save(snapshot *model.PolicySnapshot) error {
 	fa.mu.Lock()
 	defer fa.mu.Unlock()
 

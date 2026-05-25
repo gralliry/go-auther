@@ -1,14 +1,13 @@
 package auther
 
-import "fmt"
+import (
+	"fmt"
 
-// =============================================================================
-// User API
-// =============================================================================
+	"auther/model"
+)
 
-// CreateUser creates a new user under the given role.
-// Users are passive leaves — they inherit the role's permissions but
-// cannot manage resources or create other users/roles.
+// CreateUser 在指定角色下创建一个新用户。
+// 用户是被动叶子节点 —— 继承所属角色的权限，但不能管理资源或创建其他用户/角色。
 func (a *Authorizer) CreateUser(roleID, userID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -22,7 +21,7 @@ func (a *Authorizer) CreateUser(roleID, userID string) error {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	user := &UserNode{
+	user := &model.UserNode{
 		ID:   userID,
 		Role: role,
 	}
@@ -33,7 +32,7 @@ func (a *Authorizer) CreateUser(roleID, userID string) error {
 	return a.save()
 }
 
-// DeleteUser removes a user from the system.
+// DeleteUser 从系统中删除指定用户。
 func (a *Authorizer) DeleteUser(userID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -51,8 +50,8 @@ func (a *Authorizer) DeleteUser(userID string) error {
 	return a.save()
 }
 
-// GetUser returns information about a user.
-func (a *Authorizer) GetUser(userID string) (*UserInfo, error) {
+// GetUser 返回指定用户的详细信息。
+func (a *Authorizer) GetUser(userID string) (*model.UserInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -61,22 +60,30 @@ func (a *Authorizer) GetUser(userID string) (*UserInfo, error) {
 		return nil, fmt.Errorf("%w: %s", ErrUserNotFound, userID)
 	}
 
-	return &UserInfo{
+	roleID := ""
+	if user.Role != nil {
+		roleID = user.Role.ID
+	}
+	return &model.UserInfo{
 		ID:     user.ID,
-		RoleID: user.Role.ID,
+		RoleID: roleID,
 	}, nil
 }
 
-// GetAllUsers returns all users in the system.
-func (a *Authorizer) GetAllUsers() []*UserInfo {
+// GetAllUsers 返回系统中所有用户的列表。
+func (a *Authorizer) GetAllUsers() []*model.UserInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	result := make([]*UserInfo, 0, len(a.users))
+	result := make([]*model.UserInfo, 0, len(a.users))
 	for _, user := range a.users {
-		result = append(result, &UserInfo{
+		roleID := ""
+		if user.Role != nil {
+			roleID = user.Role.ID
+		}
+		result = append(result, &model.UserInfo{
 			ID:     user.ID,
-			RoleID: user.Role.ID,
+			RoleID: roleID,
 		})
 	}
 	return result

@@ -1,12 +1,12 @@
 package auther
 
-import "fmt"
+import (
+	"fmt"
 
-// =============================================================================
-// Role API
-// =============================================================================
+	"auther/model"
+)
 
-// CreateRole creates a new sub-role under the given parent role.
+// CreateRole 在指定父角色下创建一个新的子角色。
 func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -20,12 +20,12 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, parentID)
 	}
 
-	role := &RoleNode{
+	role := &model.RoleNode{
 		ID:        roleID,
 		Parent:    parent,
-		Children:  make(map[string]*RoleNode),
+		Children:  make(map[string]*model.RoleNode),
 		Resources: make(map[string]bool),
-		Users:     make(map[string]*UserNode),
+		Users:     make(map[string]*model.UserNode),
 	}
 	a.roles[roleID] = role
 	parent.Children[roleID] = role
@@ -33,9 +33,9 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	return a.save()
 }
 
-// DeleteRole deletes a role and cascades to all sub-roles and their users.
-// Grants involving deleted roles are cleaned up from surviving roles.
-// The root role cannot be deleted.
+// DeleteRole 删除指定角色，级联删除其所有子角色及关联用户。
+// 涉及已删除角色的授权记录会从幸存角色中清理。
+// 根角色不可删除。
 func (a *Authorizer) DeleteRole(roleID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -49,6 +49,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
+	// 收集待删除的子树，同时清理子角色中的用户。
 	subtree := a.collectSubtree(roleID)
 	subtreeSet := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
@@ -61,6 +62,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		}
 	}
 
+	// 从幸存角色中移除与已删除子树相关的授权记录。
 	for _, r := range a.roles {
 		if subtreeSet[r.ID] {
 			continue
@@ -69,6 +71,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		r.GrantsOut = filterGrantsByTo(r.GrantsOut, subtreeSet)
 	}
 
+	// 解除父角色引用后删除子树中的所有角色。
 	if target.Parent != nil {
 		delete(target.Parent.Children, roleID)
 	}
@@ -79,8 +82,8 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	return a.save()
 }
 
-// GetRole returns information about a role.
-func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error) {
+// GetRole 返回指定角色的详细信息。
+func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -91,14 +94,14 @@ func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error) {
 	return roleToInfo(role), nil
 }
 
-// GetAllRoles returns all roles in the system.
-func (a *Authorizer) GetAllRoles() []*RoleInfo {
+// GetAllRoles 返回系统中所有角色的信息列表。
+func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var result []*RoleInfo
-	var walk func(role *RoleNode)
-	walk = func(role *RoleNode) {
+	var result []*model.RoleInfo
+	var walk func(role *model.RoleNode)
+	walk = func(role *model.RoleNode) {
 		result = append(result, roleToInfo(role))
 		for _, child := range role.Children {
 			walk(child)
@@ -108,8 +111,8 @@ func (a *Authorizer) GetAllRoles() []*RoleInfo {
 	return result
 }
 
-// GetEffectiveRoleResources returns all resource patterns effective for a role.
-// Includes the role's own resources and explicit GrantsIn. No auto-inheritance.
+// GetEffectiveRoleResources 返回角色当前生效的所有资源权限模式。
+// 包含角色自身资源和显式的 GrantsIn，不包含自动继承。
 func (a *Authorizer) GetEffectiveRoleResources(roleID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -136,39 +139,16 @@ func (a *Authorizer) GetEffectiveRoleResources(roleID string) ([]string, error) 
 	return result, nil
 }
 
-// addResourceToRole is the internal, unchecked direct resource assignment.
-func (a *Authorizer) addResourceToRole(roleID, resource string) error {
-	role := a.roles[roleID]
-	if role == nil {
-		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
-	}
-	role.Resources[resource] = true
-	return nil
-}
-
-// removeResourceFromRole is the internal, unchecked direct resource removal.
-func (a *Authorizer) removeResourceFromRole(roleID, resource string) error {
-	role := a.roles[roleID]
-	if role == nil {
-		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
-	}
-	delete(role.Resources, resource)
-	return nil
-}
-
-// =============================================================================
-// Helpers
-// =============================================================================
-
-func roleToInfo(role *RoleNode) *RoleInfo {
-	info := &RoleInfo{
+// roleToInfo 将内部 RoleNode 转换为对外的 RoleInfo 结构。
+func roleToInfo(role *model.RoleNode) *model.RoleInfo {
+	info := &model.RoleInfo{
 		ID:         role.ID,
 		ParentID:   "",
 		Resources:  make([]string, 0, len(role.Resources)),
 		SubRoleIDs: make([]string, 0, len(role.Children)),
 		UserIDs:    make([]string, 0, len(role.Users)),
-		GrantsIn:   append([]RoleGrant(nil), role.GrantsIn...),
-		GrantsOut:  append([]RoleGrant(nil), role.GrantsOut...),
+		GrantsIn:   append([]model.RoleGrant(nil), role.GrantsIn...),
+		GrantsOut:  append([]model.RoleGrant(nil), role.GrantsOut...),
 	}
 	if role.Parent != nil {
 		info.ParentID = role.Parent.ID
@@ -185,7 +165,8 @@ func roleToInfo(role *RoleNode) *RoleInfo {
 	return info
 }
 
-func filterGrantsByFrom(grants []RoleGrant, excluded map[string]bool) []RoleGrant {
+// filterGrantsByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
+func filterGrantsByFrom(grants []model.RoleGrant, excluded map[string]bool) []model.RoleGrant {
 	out := grants[:0]
 	for _, g := range grants {
 		if excluded[g.FromRoleID] {
@@ -196,7 +177,8 @@ func filterGrantsByFrom(grants []RoleGrant, excluded map[string]bool) []RoleGran
 	return out
 }
 
-func filterGrantsByTo(grants []RoleGrant, excluded map[string]bool) []RoleGrant {
+// filterGrantsByTo 过滤掉 ToRoleID 在排除集合中的授权记录。
+func filterGrantsByTo(grants []model.RoleGrant, excluded map[string]bool) []model.RoleGrant {
 	out := grants[:0]
 	for _, g := range grants {
 		if excluded[g.ToRoleID] {

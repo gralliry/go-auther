@@ -1,15 +1,23 @@
 package auther
 
-import "fmt"
+import (
+	"fmt"
 
-// =============================================================================
-// Grant API
-// =============================================================================
+	"auther/model"
+)
 
-// GrantResource gives a role access to a resource.
-// When fromRoleID == toRoleID, the resource is added directly to the role.
-// Otherwise, it delegates from an ancestor to a descendant via a grant record.
+// GrantResource 将资源授权给指定角色。
+//
+// 当 fromRoleID == toRoleID 时，资源直接添加到该角色自身的资源列表中。
+// 否则，从祖先角色向子角色进行授权委托，形成一条授权记录。
+// 授权方必须是接收方的祖先角色，否则返回 ErrNotAncestor。
 func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error {
+	var err error
+	resource, err = normalizeResource(resource)
+	if err != nil {
+		return err
+	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -26,7 +34,7 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 		return fmt.Errorf("%w: %s is not an ancestor of %s", ErrNotAncestor, fromRoleID, toRoleID)
 	}
 
-	// Self-grant: add directly to the role's own resources.
+	// 自授权：直接写入角色自身资源，不产生授权记录。
 	if fromRoleID == toRoleID {
 		if toRole.Resources[resource] {
 			return nil
@@ -35,25 +43,32 @@ func (a *Authorizer) GrantResource(fromRoleID, toRoleID, resource string) error 
 		return a.save()
 	}
 
+	// 查重：同一 From+To+Resource 组合不允许重复存在。
 	for _, g := range fromRole.GrantsOut {
 		if g.ToRoleID == toRoleID && g.Resource == resource {
 			return fmt.Errorf("%w: %s -> %s %s", ErrDuplicateGrant, fromRoleID, toRoleID, resource)
 		}
 	}
 
-	grant := RoleGrant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource}
+	grant := model.RoleGrant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource}
 	fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
 	return a.save()
 }
 
-// RevokeResource removes a grant and cascades to sub-grants in the subtree.
+// RevokeResource 撤销一条授权，并级联删除该子树中所有相同资源的子授权。
 func (a *Authorizer) RevokeResource(fromRoleID, toRoleID, resource string) error {
+	var err error
+	resource, err = normalizeResource(resource)
+	if err != nil {
+		return err
+	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.revokeResourceLocked(fromRoleID, toRoleID, resource)
 }
 
+// revokeResourceLocked 在持有锁的情况下执行撤销逻辑。
 func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string) error {
 	fromRole := a.roles[fromRoleID]
 	toRole := a.roles[toRoleID]
@@ -61,7 +76,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 		return fmt.Errorf("%w", ErrGrantNotFound)
 	}
 
-	// Self-revoke: remove from the role's own resources.
+	// 自撤销：从角色自身资源中移除。
 	if fromRoleID == toRoleID {
 		if !toRole.Resources[resource] {
 			return ErrGrantNotFound
@@ -70,6 +85,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 		return a.save()
 	}
 
+	// 从授权方和接收方的授权列表中双向删除该条授权记录。
 	found := false
 	for i, g := range fromRole.GrantsOut {
 		if g.ToRoleID == toRoleID && g.Resource == resource {
@@ -88,7 +104,7 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 		return fmt.Errorf("%w: %s -> %s %s", ErrGrantNotFound, fromRoleID, toRoleID, resource)
 	}
 
-	// Cascade: remove all grants within the subtree for the same resource
+	// 级联清理：删除子树中所有针对同一资源的子授权。
 	subtree := a.collectSubtree(toRoleID)
 	subtreeSet := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
@@ -100,7 +116,8 @@ func (a *Authorizer) revokeResourceLocked(fromRoleID, toRoleID, resource string)
 	return a.save()
 }
 
-func removeSubtreeGrants(grants []RoleGrant, resource string, subtreeSet map[string]bool, roles map[string]*RoleNode) []RoleGrant {
+// removeSubtreeGrants 从授权列表中移除匹配子树集合中目标角色的所有授权。
+func removeSubtreeGrants(grants []model.RoleGrant, resource string, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.RoleGrant {
 	out := grants[:0]
 	for _, g := range grants {
 		if g.Resource == resource && subtreeSet[g.ToRoleID] {
@@ -114,7 +131,8 @@ func removeSubtreeGrants(grants []RoleGrant, resource string, subtreeSet map[str
 	return out
 }
 
-func removeGrantIn(grants []RoleGrant, fromRoleID, resource string) []RoleGrant {
+// removeGrantIn 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
+func removeGrantIn(grants []model.RoleGrant, fromRoleID, resource string) []model.RoleGrant {
 	for i, g := range grants {
 		if g.FromRoleID == fromRoleID && g.Resource == resource {
 			return append(grants[:i], grants[i+1:]...)
@@ -123,8 +141,8 @@ func removeGrantIn(grants []RoleGrant, fromRoleID, resource string) []RoleGrant 
 	return grants
 }
 
-// GetGrantsToRole returns all grants received by the given role.
-func (a *Authorizer) GetGrantsToRole(roleID string) ([]RoleGrant, error) {
+// GetGrantsToRole 返回指定角色接收到的所有授权记录（副本）。
+func (a *Authorizer) GetGrantsToRole(roleID string) ([]model.RoleGrant, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -132,13 +150,13 @@ func (a *Authorizer) GetGrantsToRole(roleID string) ([]RoleGrant, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	result := make([]RoleGrant, len(role.GrantsIn))
+	result := make([]model.RoleGrant, len(role.GrantsIn))
 	copy(result, role.GrantsIn)
 	return result, nil
 }
 
-// GetGrantsFromRole returns all grants made by the given role.
-func (a *Authorizer) GetGrantsFromRole(roleID string) ([]RoleGrant, error) {
+// GetGrantsFromRole 返回指定角色发出的所有授权记录（副本）。
+func (a *Authorizer) GetGrantsFromRole(roleID string) ([]model.RoleGrant, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -146,20 +164,20 @@ func (a *Authorizer) GetGrantsFromRole(roleID string) ([]RoleGrant, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	result := make([]RoleGrant, len(role.GrantsOut))
+	result := make([]model.RoleGrant, len(role.GrantsOut))
 	copy(result, role.GrantsOut)
 	return result, nil
 }
 
-// GetAllGrants returns all grants in the system.
-func (a *Authorizer) GetAllGrants() []RoleGrant {
+// GetAllGrants 返回系统中所有唯一的授权记录。
+func (a *Authorizer) GetAllGrants() []model.RoleGrant {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var result []RoleGrant
+	var result []model.RoleGrant
 	seen := make(map[string]bool)
-	var walk func(role *RoleNode)
-	walk = func(role *RoleNode) {
+	var walk func(role *model.RoleNode)
+	walk = func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
 			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
 			if !seen[key] {

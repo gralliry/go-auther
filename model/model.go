@@ -1,10 +1,7 @@
-package auther
+// Package model 定义 auther 权限库的核心数据结构。
+package model
 
-// =============================================================================
-// Core data model
-// =============================================================================
-
-// RoleNode represents a role in the role tree.
+// RoleNode 表示角色树中的一个角色节点。
 type RoleNode struct {
 	ID        string
 	Parent    *RoleNode
@@ -15,20 +12,20 @@ type RoleNode struct {
 	Users     map[string]*UserNode
 }
 
-// UserNode represents a user in the authorization system.
+// UserNode 表示权限系统中的一个用户。
 type UserNode struct {
 	ID   string
 	Role *RoleNode
 }
 
-// RoleGrant represents an explicit resource delegation from one role to a descendant.
+// RoleGrant 表示从祖先角色到子角色的显式资源授权记录。
 type RoleGrant struct {
 	FromRoleID string
 	ToRoleID   string
 	Resource   string
 }
 
-// RoleInfo is the public view of a role, returned by GetRole/GetAllRoles.
+// RoleInfo 是对外暴露的角色信息视图。
 type RoleInfo struct {
 	ID         string
 	ParentID   string
@@ -39,38 +36,33 @@ type RoleInfo struct {
 	GrantsOut  []RoleGrant
 }
 
-// UserInfo is the public view of a user, returned by GetUser/GetAllUsers.
+// UserInfo 是对外暴露的用户信息视图。
 type UserInfo struct {
 	ID     string
 	RoleID string
 }
 
-// =============================================================================
-// Snapshot DTOs for adapter serialization
-// =============================================================================
-
-// PolicySnapshot is the flat, JSON-serializable representation of the entire
-// authorization state. Used by adapters for persistence.
+// PolicySnapshot 是完整权限状态的扁平化快照，由适配器用于持久化。
 type PolicySnapshot struct {
 	Roles  []RoleSnapshot  `json:"roles"`
 	Users  []UserSnapshot  `json:"users"`
 	Grants []GrantSnapshot `json:"grants"`
 }
 
-// RoleSnapshot is a flat role record for serialization.
+// RoleSnapshot 是用于序列化的扁平角色记录。
 type RoleSnapshot struct {
 	ID        string   `json:"id"`
 	ParentID  string   `json:"parent_id"`
 	Resources []string `json:"resources"`
 }
 
-// UserSnapshot is a flat user record for serialization.
+// UserSnapshot 是用于序列化的扁平用户记录。
 type UserSnapshot struct {
 	ID     string `json:"id"`
 	RoleID string `json:"role_id"`
 }
 
-// GrantSnapshot is a flat grant record for serialization.
+// GrantSnapshot 是用于序列化的扁平授权记录。
 type GrantSnapshot struct {
 	FromRoleID string `json:"from_role_id"`
 	ToRoleID   string `json:"to_role_id"`

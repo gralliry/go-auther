@@ -2,41 +2,35 @@ package auther
 
 import "errors"
 
+// 预定义的哨兵错误，调用方可通过 errors.Is 进行判断。
 var (
-	// ErrUserNotFound is returned when a user lookup fails.
+	// ErrUserNotFound 用户不存在。
 	ErrUserNotFound = errors.New("auther: user not found")
 
-	// ErrRoleNotFound is returned when a role lookup fails.
+	// ErrRoleNotFound 角色不存在。
 	ErrRoleNotFound = errors.New("auther: role not found")
 
-	// ErrGrantNotFound is returned when a grant lookup fails.
+	// ErrGrantNotFound 授权记录不存在。
 	ErrGrantNotFound = errors.New("auther: grant not found")
 
-	// ErrNotAncestor is returned when a grant is attempted between roles
-	// that are not in an ancestor-descendant relationship.
+	// ErrNotAncestor 授权方不是接收方的祖先角色，授权被拒绝。
 	ErrNotAncestor = errors.New("auther: grant target must be a descendant of the grantor role")
 
-	// ErrCircularRoleHierarchy is returned when a role hierarchy loop is detected.
+	// ErrCircularRoleHierarchy 角色层级中存在循环引用。
 	ErrCircularRoleHierarchy = errors.New("auther: circular role hierarchy detected")
 
-	// ErrInvalidResource is returned when a resource pattern is invalid.
+	// ErrInvalidResource 资源路径格式无效。
 	ErrInvalidResource = errors.New("auther: invalid resource pattern")
 
-	// ErrDuplicateUser is returned when adding a user that already exists.
+	// ErrDuplicateUser 尝试创建已存在的用户。
 	ErrDuplicateUser = errors.New("auther: user already exists")
 
-	// ErrDuplicateRole is returned when adding a role that already exists.
+	// ErrDuplicateRole 尝试创建已存在的角色。
 	ErrDuplicateRole = errors.New("auther: role already exists")
 
-	// ErrDuplicateGrant is returned when adding a grant that already exists.
+	// ErrDuplicateGrant 尝试创建已存在的授权记录。
 	ErrDuplicateGrant = errors.New("auther: grant already exists")
 
-	// ErrRootRoleDelete is returned when attempting to delete the root role.
+	// ErrRootRoleDelete 禁止删除根角色。
 	ErrRootRoleDelete = errors.New("auther: cannot delete root role")
-
-	// ErrRoleHasSubRoles is returned when deleting a role that still has child roles.
-	ErrRoleHasSubRoles = errors.New("auther: cannot delete role with sub-roles; delete sub-roles first")
-
-	// ErrRoleHasUsers is returned when deleting a role that still has users.
-	ErrRoleHasUsers = errors.New("auther: cannot delete role with users; delete users first")
 )
