@@ -213,29 +213,25 @@ func (a *Authorizer) loadGrants(grants []snapshot.Grant) (cleansed bool) {
 	return cleansed
 }
 
-// snapshot 将当前内存中的角色树转换为可序列化的策略快照。
+// snapshot 将当前内存中的角色树转换为可序列化的策略快照，使用 BFS 遍历。
 func (a *Authorizer) snapshot() *snapshot.Policy {
 	snap := &snapshot.Policy{}
+	seen := make(map[string]bool)
+	queue := []*model.RoleNode{a.root}
 
-	var walk func(role *model.RoleNode)
-	walk = func(role *model.RoleNode) {
+	for len(queue) > 0 {
+		role := queue[0]
+		queue = queue[1:]
+
 		rs := snapshot.Role{ID: role.ID}
 		if role.Parent != nil {
 			rs.ParentID = role.Parent.ID
 		}
 		snap.Roles = append(snap.Roles, rs)
+
 		for _, user := range role.Users {
 			snap.Users = append(snap.Users, snapshot.User{ID: user.ID, RoleID: user.Role.ID})
 		}
-		for _, child := range role.Children {
-			walk(child)
-		}
-	}
-	walk(a.root)
-
-	seen := make(map[string]bool)
-	var collectGrants func(role *model.RoleNode)
-	collectGrants = func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
 			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
 			if !seen[key] {
@@ -246,10 +242,9 @@ func (a *Authorizer) snapshot() *snapshot.Policy {
 			}
 		}
 		for _, child := range role.Children {
-			collectGrants(child)
+			queue = append(queue, child)
 		}
 	}
-	collectGrants(a.root)
 	return snap
 }
 
