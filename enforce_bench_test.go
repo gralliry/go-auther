@@ -2,43 +2,39 @@ package auther
 
 import (
 	"testing"
+
+	"auther/internal/match"
 )
 
-var benchRes Resource
 var benchMatchResult bool
 
 func BenchmarkMatchExact(b *testing.B) {
-	pat := Resource("/user/create")
 	for b.Loop() {
-		benchMatchResult = pat.Match("/user/create")
+		benchMatchResult = match.Match("/user/create", "/user/create")
 	}
 }
 
 func BenchmarkMatchNoMatchLiteral(b *testing.B) {
-	pat := Resource("/user/create")
 	for b.Loop() {
-		benchMatchResult = pat.Match("/user/delete")
+		benchMatchResult = match.Match("/user/create", "/user/delete")
 	}
 }
 
 func BenchmarkMatchStar(b *testing.B) {
-	pat := Resource("/user/*/edit")
 	for b.Loop() {
-		benchMatchResult = pat.Match("/user/123/edit")
+		benchMatchResult = match.Match("/user/*/edit", "/user/123/edit")
 	}
 }
 
 func BenchmarkMatchDoubleStar(b *testing.B) {
-	pat := Resource("/a/**/z")
 	for b.Loop() {
-		benchMatchResult = pat.Match("/a/b/c/d/e/z")
+		benchMatchResult = match.Match("/a/**/z", "/a/b/c/d/e/z")
 	}
 }
 
 func BenchmarkMatchDoubleStarMany(b *testing.B) {
-	pat := Resource("/api/**/export")
 	for b.Loop() {
-		benchMatchResult = pat.Match("/api/v1/users/admin/reports/2024/export")
+		benchMatchResult = match.Match("/api/**/export", "/api/v1/users/admin/reports/2024/export")
 	}
 }
 

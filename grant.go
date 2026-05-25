@@ -3,12 +3,14 @@ package auther
 import (
 	"fmt"
 
-	"auther/model"
+	"auther/internal/match"
+
+	"auther/internal/model"
 )
 
-// normalizeRes 调用 model.NewResource 并封装错误为 ErrInvalidResource。
-func normalizeRes(raw string) (Resource, error) {
-	res, err := model.NewResource(raw)
+// normalizeRes 调用 match.Clean 并封装错误为 ErrInvalidResource。
+func normalizeRes(raw string) (string, error) {
+	res, err := match.Clean(raw)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidResource, err)
 	}
@@ -42,19 +44,12 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 		return fmt.Errorf("%w: %s is not an ancestor of %s", ErrNotAncestor, fromRoleID, toRoleID)
 	}
 
-	// 自授权：直接写入角色自身资源，不产生授权记录。
-	if fromRoleID == toRoleID {
-		if toRole.Resources[res] {
-			return nil
-		}
-		toRole.Resources[res] = true
-		toRole.ResetMatchCache()
-		return a.save()
-	}
-
 	// 查重：同一 From+To+Resource 组合不允许重复存在。
 	for _, g := range fromRole.GrantsOut {
 		if g.ToRoleID == toRoleID && g.Resource == res {
+			if fromRoleID == toRoleID {
+				return nil // 自授权幂等
+			}
 			return fmt.Errorf("%w: %s -> %s %s", ErrDuplicateGrant, fromRoleID, toRoleID, res)
 		}
 	}
@@ -79,7 +74,7 @@ func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error {
 }
 
 // revokeLocked 在持有锁的情况下执行撤销逻辑。
-func (a *Authorizer) revokeLocked(fromRoleID, toRoleID string, resource Resource) error {
+func (a *Authorizer) revokeLocked(fromRoleID, toRoleID string, resource string) error {
 	fromRole := a.roles[fromRoleID]
 	toRole := a.roles[toRoleID]
 	if fromRole == nil || toRole == nil {
@@ -93,17 +88,33 @@ func (a *Authorizer) revokeLocked(fromRoleID, toRoleID string, resource Resource
 }
 
 // revokeSelfLocked 移除角色自身的资源权限。
-func (a *Authorizer) revokeSelfLocked(role *model.RoleNode, resource Resource) error {
-	if !role.Resources[resource] {
+func (a *Authorizer) revokeSelfLocked(role *model.RoleNode, resource string) error {
+	found := false
+	for i, g := range role.GrantsIn {
+		if g.FromRoleID == role.ID && g.Resource == resource {
+			role.GrantsIn = append(role.GrantsIn[:i], role.GrantsIn[i+1:]...)
+			found = true
+			break
+		}
+	}
+	if !found {
 		return ErrGrantNotFound
 	}
-	delete(role.Resources, resource)
+	for i, g := range role.GrantsOut {
+		if g.ToRoleID == role.ID && g.Resource == resource {
+			role.GrantsOut = append(role.GrantsOut[:i], role.GrantsOut[i+1:]...)
+			break
+		}
+	}
+	if !hasGrant(role.GrantsIn, resource) {
+		delete(role.GrantedMap, resource)
+	}
 	role.ResetMatchCache()
 	return a.save()
 }
 
 // revokeDelegatedLocked 撤销委托授权，并级联清理子树中相同资源的子授权。
-func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, resource Resource) error {
+func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, resource string) error {
 	// 双向删除授权记录。
 	found := false
 	for i, g := range fromRole.GrantsOut {
@@ -142,7 +153,7 @@ func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, res
 }
 
 // removeGrants 从授权列表中移除匹配子树集合中目标角色的所有授权。
-func removeGrants(grants []model.GrantInfo, resource Resource, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.GrantInfo {
+func removeGrants(grants []model.GrantInfo, resource string, subtreeSet map[string]bool, roles map[string]*model.RoleNode) []model.GrantInfo {
 	out := grants[:0]
 	for _, g := range grants {
 		if g.Resource == resource && subtreeSet[g.ToRoleID] {
@@ -161,7 +172,7 @@ func removeGrants(grants []model.GrantInfo, resource Resource, subtreeSet map[st
 }
 
 // hasGrant 检查授权列表中是否存在指定资源的授权。
-func hasGrant(grants []model.GrantInfo, resource Resource) bool {
+func hasGrant(grants []model.GrantInfo, resource string) bool {
 	for _, g := range grants {
 		if g.Resource == resource {
 			return true
@@ -171,7 +182,7 @@ func hasGrant(grants []model.GrantInfo, resource Resource) bool {
 }
 
 // delGrant 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
-func delGrant(grants []model.GrantInfo, fromRoleID string, resource Resource) []model.GrantInfo {
+func delGrant(grants []model.GrantInfo, fromRoleID string, resource string) []model.GrantInfo {
 	for i, g := range grants {
 		if g.FromRoleID == fromRoleID && g.Resource == resource {
 			return append(grants[:i], grants[i+1:]...)
@@ -180,7 +191,7 @@ func delGrant(grants []model.GrantInfo, fromRoleID string, resource Resource) []
 	return grants
 }
 
-// GrantsTo 返回指定角色接收到的所有授权记录（副本）。
+// GrantsTo 返回指定角色接收到的外部授权记录（副本，不含自授权）。
 func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -189,12 +200,16 @@ func (a *Authorizer) GrantsTo(roleID string) ([]model.GrantInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	result := make([]model.GrantInfo, len(role.GrantsIn))
-	copy(result, role.GrantsIn)
+	var result []model.GrantInfo
+	for _, g := range role.GrantsIn {
+		if g.FromRoleID != g.ToRoleID {
+			result = append(result, g)
+		}
+	}
 	return result, nil
 }
 
-// GrantsFrom 返回指定角色发出的所有授权记录（副本）。
+// GrantsFrom 返回指定角色发出的外部授权记录（副本，不含自授权）。
 func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -203,12 +218,16 @@ func (a *Authorizer) GrantsFrom(roleID string) ([]model.GrantInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	result := make([]model.GrantInfo, len(role.GrantsOut))
-	copy(result, role.GrantsOut)
+	var result []model.GrantInfo
+	for _, g := range role.GrantsOut {
+		if g.FromRoleID != g.ToRoleID {
+			result = append(result, g)
+		}
+	}
 	return result, nil
 }
 
-// AllGrants 返回系统中所有唯一的授权记录。
+// AllGrants 返回系统中所有唯一的外部授权记录（不含自授权）。
 func (a *Authorizer) AllGrants() []model.GrantInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -218,7 +237,10 @@ func (a *Authorizer) AllGrants() []model.GrantInfo {
 	var walk func(role *model.RoleNode)
 	walk = func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
-			key := g.FromRoleID + "|" + g.ToRoleID + "|" + string(g.Resource)
+			if g.FromRoleID == g.ToRoleID {
+				continue
+			}
+			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
 			if !seen[key] {
 				seen[key] = true
 				result = append(result, g)

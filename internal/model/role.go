@@ -5,13 +5,19 @@ type RoleNode struct {
 	ID         string
 	Parent     *RoleNode
 	Children   map[string]*RoleNode
-	Resources  map[Resource]bool
-	GrantedMap map[Resource]bool // 索引：精确资源键 → true，O(1) 查找
+	GrantedMap map[string]bool
 	GrantsIn   []GrantInfo
 	GrantsOut  []GrantInfo
 	Users      map[string]*UserNode
 
-	matchCache map[string]bool // 匹配结果缓存（简化版 LRU）
+	matchCache map[string]bool
+}
+
+// GrantInfo 表示从祖先角色到子角色的显式资源授权记录。
+type GrantInfo struct {
+	FromRoleID string
+	ToRoleID   string
+	Resource   string
 }
 
 const maxMatchCacheSize = 64
@@ -36,22 +42,4 @@ func (r *RoleNode) SetMatchCache(key string, val bool) {
 // ResetMatchCache 清空匹配缓存，在写操作后调用。
 func (r *RoleNode) ResetMatchCache() {
 	r.matchCache = nil
-}
-
-// GrantInfo 表示从祖先角色到子角色的显式资源授权记录。
-type GrantInfo struct {
-	FromRoleID string
-	ToRoleID   string
-	Resource   Resource
-}
-
-// RoleInfo 是对外暴露的角色信息视图。
-type RoleInfo struct {
-	ID         string
-	ParentID   string
-	Resources  []Resource
-	SubRoleIDs []string
-	UserIDs    []string
-	GrantsIn   []GrantInfo
-	GrantsOut  []GrantInfo
 }

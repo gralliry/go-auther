@@ -3,8 +3,14 @@ package auther
 import (
 	"fmt"
 
-	"auther/model"
+	"auther/internal/model"
 )
+
+// UserInfo 是对外暴露的用户信息视图。
+type UserInfo struct {
+	ID     string
+	RoleID string
+}
 
 // CreateUser 在指定角色下创建一个新用户。
 // 用户是被动叶子节点 —— 继承所属角色的权限，但不能管理资源或创建其他用户/角色。
@@ -51,7 +57,7 @@ func (a *Authorizer) DeleteUser(userID string) error {
 }
 
 // GetUser 返回指定用户的详细信息。
-func (a *Authorizer) GetUser(userID string) (*model.UserInfo, error) {
+func (a *Authorizer) GetUser(userID string) (*UserInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -64,24 +70,24 @@ func (a *Authorizer) GetUser(userID string) (*model.UserInfo, error) {
 	if user.Role != nil {
 		roleID = user.Role.ID
 	}
-	return &model.UserInfo{
+	return &UserInfo{
 		ID:     user.ID,
 		RoleID: roleID,
 	}, nil
 }
 
 // Users 返回系统中所有用户的列表。
-func (a *Authorizer) Users() []*model.UserInfo {
+func (a *Authorizer) Users() []*UserInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	result := make([]*model.UserInfo, 0, len(a.users))
+	result := make([]*UserInfo, 0, len(a.users))
 	for _, user := range a.users {
 		roleID := ""
 		if user.Role != nil {
 			roleID = user.Role.ID
 		}
-		result = append(result, &model.UserInfo{
+		result = append(result, &UserInfo{
 			ID:     user.ID,
 			RoleID: roleID,
 		})

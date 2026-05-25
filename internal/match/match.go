@@ -1,4 +1,4 @@
-package model
+package match
 
 import (
 	"fmt"
@@ -7,44 +7,37 @@ import (
 
 const noStar = -1
 
-// Resource 是一个经过校验和规范化的资源路径模式。
-// 支持 *（匹配单个路径段）和 **（匹配零个或多个路径段）通配符。
-type Resource string
-
-// NewResource 校验并规范化一个原始资源路径。
-func NewResource(raw string) (Resource, error) {
+// Clean 校验并规范化一个资源路径字符串。
+func Clean(raw string) (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("resource must not be empty")
 	}
 	if raw[0] != '/' {
 		return "", fmt.Errorf("resource must start with '/'")
 	}
-	return Resource(path.Clean(raw)), nil
+	return path.Clean(raw), nil
 }
 
-// Match 判断 target 是否匹配此资源模式，零堆分配。
-func (r Resource) Match(target string) bool {
-	if string(r) == target {
+// Match 判断 target 是否匹配 pattern glob 模式，零堆分配。
+func Match(pattern, target string) bool {
+	if pattern == target {
 		return true
 	}
-	if !r.HasWildcard() {
+	if !HasWildcard(pattern) {
 		return false
 	}
-	return matchGlob(string(r), target)
+	return matchGlob(pattern, target)
 }
 
-// HasWildcard 判断此模式是否包含 '*' 通配符。
-func (r Resource) HasWildcard() bool {
-	for i := 0; i < len(r); i++ {
-		if r[i] == '*' {
+// HasWildcard 判断字符串是否包含 '*' 通配符。
+func HasWildcard(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '*' {
 			return true
 		}
 	}
 	return false
 }
-
-// String 返回规范化后的路径字符串。
-func (r Resource) String() string { return string(r) }
 
 // matchGlob 分段迭代匹配。* 匹配单段，** 匹配零或多段。
 func matchGlob(p, t string) bool {

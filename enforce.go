@@ -3,14 +3,12 @@ package auther
 import (
 	"fmt"
 
+	"auther/internal/match"
 )
 
 // Enforce 检查用户是否有权限访问指定资源。
 //
-// 权限模型为显式授权，用户仅从以下来源获得权限：
-//  1. 其所属角色自身拥有的资源（Role.Resources）
-//  2. 其所属角色接收到的显式授权（GrantsIn）
-//
+// 权限模型为显式授权，权限仅来自角色接收到的授权记录（GrantsIn）。
 // 祖先角色的资源和授权不会自动继承。
 func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 	normalized, err := normalizeRes(res)
@@ -36,30 +34,23 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 	}
 
 	// 匹配缓存：避免重复的 glob 匹配开销
-	if cached, ok := role.GetMatchCache(string(normalized)); ok {
+	if cached, ok := role.GetMatchCache(normalized); ok {
 		return cached, nil
 	}
 
-	// 先遍历角色自有资源，再遍历收到的授权。
-	for pattern := range role.Resources {
-		if pattern.Match(string(normalized)) {
-			role.SetMatchCache(string(normalized), true)
-			return true, nil
-		}
-	}
 	for _, g := range role.GrantsIn {
-		if g.Resource.Match(string(normalized)) {
-			role.SetMatchCache(string(normalized), true)
+		if match.Match(g.Resource, normalized) {
+			role.SetMatchCache(normalized, true)
 			return true, nil
 		}
 	}
 
-	role.SetMatchCache(string(normalized), false)
+	role.SetMatchCache(normalized, false)
 	return false, nil
 }
 
 // Permissions 返回用户当前生效的所有资源权限模式（去重）。
-func (a *Authorizer) Permissions(userID string) ([]Resource, error) {
+func (a *Authorizer) Permissions(userID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -72,14 +63,8 @@ func (a *Authorizer) Permissions(userID string) ([]Resource, error) {
 		return nil, fmt.Errorf("auther: user %s has no role — corrupted state", userID)
 	}
 
-	seen := make(map[Resource]bool)
-	var result []Resource
-	for pattern := range role.Resources {
-		if !seen[pattern] {
-			seen[pattern] = true
-			result = append(result, pattern)
-		}
-	}
+	seen := make(map[string]bool)
+	var result []string
 	for _, g := range role.GrantsIn {
 		if !seen[g.Resource] {
 			seen[g.Resource] = true

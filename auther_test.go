@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"testing"
 
-	"auther/model"
 )
 
 // =============================================================================
@@ -589,13 +588,13 @@ func TestEffectiveRoleResources(t *testing.T) {
 
 // corruptAdapter is an adapter that seeds the Authorizer with a given snapshot.
 type corruptAdapter struct {
-	snap *model.PolicySnapshot
+	snap *PolicySnapshot
 }
 
-func (a *corruptAdapter) Load() (*model.PolicySnapshot, error) { return a.snap, nil }
-func (a *corruptAdapter) Save(s *model.PolicySnapshot) error   { a.snap = s; return nil }
+func (a *corruptAdapter) Load() (*PolicySnapshot, error) { return a.snap, nil }
+func (a *corruptAdapter) Save(s *PolicySnapshot) error   { a.snap = s; return nil }
 
-func newHealed(t *testing.T, snap *model.PolicySnapshot) *Authorizer {
+func newHealed(t *testing.T, snap *PolicySnapshot) *Authorizer {
 	t.Helper()
 	a, err := NewAuthorizer(&corruptAdapter{snap: snap})
 	if err != nil {
@@ -606,9 +605,9 @@ func newHealed(t *testing.T, snap *model.PolicySnapshot) *Authorizer {
 
 func TestSelfHealOrphanRole(t *testing.T) {
 	// Role with non-existent ParentID → reattached to root.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 			{ID: "orphan", ParentID: "bogus"},
 		},
 	})
@@ -633,9 +632,9 @@ func TestSelfHealOrphanRole(t *testing.T) {
 
 func TestSelfHealMissingRoot(t *testing.T) {
 	// No role with empty ParentID → auto-create root with "/**".
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "child", ParentID: "root", Resources: []Resource{"/x"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "child", ParentID: "root"},
 		},
 	})
 
@@ -663,9 +662,9 @@ func TestSelfHealMissingRoot(t *testing.T) {
 
 func TestSelfHealMultipleRoots(t *testing.T) {
 	// Two roles with empty ParentID → first is root, second becomes child of root.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 			{ID: "fake_root", ParentID: ""},
 		},
 	})
@@ -678,11 +677,11 @@ func TestSelfHealMultipleRoots(t *testing.T) {
 
 func TestSelfHealDanglingUser(t *testing.T) {
 	// User with non-existent RoleID → dropped.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 		},
-		Users: []model.UserSnapshot{
+		Users: []UserSnapshot{
 			{ID: "ghost", RoleID: "bogus"},
 			{ID: "real", RoleID: "root"},
 		},
@@ -700,11 +699,11 @@ func TestSelfHealDanglingUser(t *testing.T) {
 
 func TestSelfHealDanglingGrantFrom(t *testing.T) {
 	// Grant with non-existent FromRoleID → dropped.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 		},
-		Grants: []model.GrantSnapshot{
+		Grants: []GrantSnapshot{
 			{FromRoleID: "ghost", ToRoleID: "root", Resource: "/x"},
 		},
 	})
@@ -717,11 +716,11 @@ func TestSelfHealDanglingGrantFrom(t *testing.T) {
 
 func TestSelfHealDanglingGrantTo(t *testing.T) {
 	// Grant with non-existent ToRoleID → dropped.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 		},
-		Grants: []model.GrantSnapshot{
+		Grants: []GrantSnapshot{
 			{FromRoleID: "root", ToRoleID: "ghost", Resource: "/x"},
 		},
 	})
@@ -734,13 +733,13 @@ func TestSelfHealDanglingGrantTo(t *testing.T) {
 
 func TestSelfHealNotAncestorGrant(t *testing.T) {
 	// Grant where From is not ancestor of To → dropped.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 			{ID: "role_a", ParentID: "root"},
 			{ID: "role_b", ParentID: "root"},
 		},
-		Grants: []model.GrantSnapshot{
+		Grants: []GrantSnapshot{
 			{FromRoleID: "role_a", ToRoleID: "role_b", Resource: "/x"}, // siblings — not ancestor
 		},
 	})
@@ -753,12 +752,12 @@ func TestSelfHealNotAncestorGrant(t *testing.T) {
 
 func TestSelfHealDuplicateGrant(t *testing.T) {
 	// Duplicate grant (same From+To+Resource) → keep one, drop rest.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 			{ID: "child", ParentID: "root"},
 		},
-		Grants: []model.GrantSnapshot{
+		Grants: []GrantSnapshot{
 			{FromRoleID: "root", ToRoleID: "child", Resource: "/dup"},
 			{FromRoleID: "root", ToRoleID: "child", Resource: "/dup"},
 		},
@@ -775,11 +774,11 @@ func TestSelfHealDuplicateGrant(t *testing.T) {
 
 func TestSelfHealSelfGrant(t *testing.T) {
 	// Self-grant in snapshot → converted to role's own Resources, not as grant record.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 		},
-		Grants: []model.GrantSnapshot{
+		Grants: []GrantSnapshot{
 			{FromRoleID: "root", ToRoleID: "root", Resource: "/self"},
 		},
 	})
@@ -806,17 +805,17 @@ func TestSelfHealSelfGrant(t *testing.T) {
 
 func TestSelfHealComplete(t *testing.T) {
 	// Full scenario: multiple corruption types at once.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root"},
 			{ID: "orphan", ParentID: "bogus"},
 			{ID: "child", ParentID: "root"},
 		},
-		Users: []model.UserSnapshot{
+		Users: []UserSnapshot{
 			{ID: "ghost", RoleID: "bogus"},
 			{ID: "good", RoleID: "child"},
 		},
-		Grants: []model.GrantSnapshot{
+		Grants: []GrantSnapshot{
 			{FromRoleID: "bogus", ToRoleID: "child", Resource: "/bad1"},          // dangling From
 			{FromRoleID: "root", ToRoleID: "bogus2", Resource: "/bad2"},         // dangling To
 			{FromRoleID: "orphan", ToRoleID: "child", Resource: "/bad3"},        // not ancestor (orphan reattached to root, but child is direct child of root, not orphan)
@@ -981,8 +980,8 @@ func TestDeleteNonExistentUser(t *testing.T) {
 
 func TestCircularHierarchyRejected(t *testing.T) {
 	// Manually build a corrupt snapshot with circular parent pointers.
-	snap := &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
+	snap := &PolicySnapshot{
+		Roles: []RoleSnapshot{
 			{ID: "a"},
 			{ID: "b", ParentID: "a"},
 			{ID: "c", ParentID: "b"},
@@ -999,9 +998,9 @@ func TestCircularHierarchyRejected(t *testing.T) {
 
 func TestSelfReferencingParentHealed(t *testing.T) {
 	// root's ParentID = "root" (self-reference) → healed: Parent stays nil.
-	a := newHealed(t, &model.PolicySnapshot{
-		Roles: []model.RoleSnapshot{
-			{ID: "root", ParentID: "root", Resources: []Resource{"/**"}},
+	a := newHealed(t, &PolicySnapshot{
+		Roles: []RoleSnapshot{
+			{ID: "root", ParentID: "root"},
 			{ID: "child", ParentID: "root"},
 		},
 	})

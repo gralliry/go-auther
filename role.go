@@ -3,8 +3,19 @@ package auther
 import (
 	"fmt"
 
-	"auther/model"
+	"auther/internal/model"
 )
+
+// RoleInfo 是对外暴露的角色信息视图。
+type RoleInfo struct {
+	ID         string
+	ParentID   string
+	Resources  []string
+	SubRoleIDs []string
+	UserIDs    []string
+	GrantsIn   []GrantInfo
+	GrantsOut  []GrantInfo
+}
 
 // CreateRole 在指定父角色下创建一个新的子角色。
 func (a *Authorizer) CreateRole(parentID, roleID string) error {
@@ -24,8 +35,7 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 		ID:         roleID,
 		Parent:     parent,
 		Children:   make(map[string]*model.RoleNode),
-		Resources:  make(map[Resource]bool),
-		GrantedMap: make(map[Resource]bool),
+		GrantedMap: make(map[string]bool),
 		Users:      make(map[string]*model.UserNode),
 	}
 	a.roles[roleID] = role
@@ -92,7 +102,7 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 		if excluded[r.ID] {
 			continue
 		}
-		r.GrantedMap = make(map[Resource]bool)
+		r.GrantedMap = make(map[string]bool)
 		for _, g := range r.GrantsIn {
 			if !excluded[g.FromRoleID] {
 				r.GrantedMap[g.Resource] = true
@@ -103,7 +113,7 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 }
 
 // GetRole 返回指定角色的详细信息。
-func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
+func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -115,11 +125,11 @@ func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
 }
 
 // Roles 返回系统中所有角色的信息列表。
-func (a *Authorizer) Roles() []*model.RoleInfo {
+func (a *Authorizer) Roles() []*RoleInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var result []*model.RoleInfo
+	var result []*RoleInfo
 	var walk func(role *model.RoleNode)
 	walk = func(role *model.RoleNode) {
 		result = append(result, roleToInfo(role))
@@ -132,8 +142,7 @@ func (a *Authorizer) Roles() []*model.RoleInfo {
 }
 
 // RoleResources 返回角色当前生效的所有资源权限模式。
-// 包含角色自身资源和显式的 GrantsIn，不包含自动继承。
-func (a *Authorizer) RoleResources(roleID string) ([]Resource, error) {
+func (a *Authorizer) RoleResources(roleID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -142,14 +151,8 @@ func (a *Authorizer) RoleResources(roleID string) ([]Resource, error) {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	seen := make(map[Resource]bool)
-	var result []Resource
-	for res := range role.Resources {
-		if !seen[res] {
-			seen[res] = true
-			result = append(result, res)
-		}
-	}
+	seen := make(map[string]bool)
+	var result []string
 	for _, g := range role.GrantsIn {
 		if !seen[g.Resource] {
 			seen[g.Resource] = true
@@ -160,21 +163,29 @@ func (a *Authorizer) RoleResources(roleID string) ([]Resource, error) {
 }
 
 // roleToInfo 将内部 RoleNode 转换为对外的 RoleInfo 结构。
-func roleToInfo(role *model.RoleNode) *model.RoleInfo {
-	info := &model.RoleInfo{
+func roleToInfo(role *model.RoleNode) *RoleInfo {
+	info := &RoleInfo{
 		ID:         role.ID,
 		ParentID:   "",
-		Resources:  make([]Resource, 0, len(role.Resources)),
+		Resources:  make([]string, 0, len(role.GrantsIn)),
 		SubRoleIDs: make([]string, 0, len(role.Children)),
 		UserIDs:    make([]string, 0, len(role.Users)),
-		GrantsIn:   append([]model.GrantInfo(nil), role.GrantsIn...),
-		GrantsOut:  append([]model.GrantInfo(nil), role.GrantsOut...),
+		GrantsIn:   nil,
+		GrantsOut:  nil,
 	}
 	if role.Parent != nil {
 		info.ParentID = role.Parent.ID
 	}
-	for res := range role.Resources {
-		info.Resources = append(info.Resources, res)
+	for _, g := range role.GrantsIn {
+		info.Resources = append(info.Resources, g.Resource)
+		if g.FromRoleID != g.ToRoleID {
+			info.GrantsIn = append(info.GrantsIn, g)
+		}
+	}
+	for _, g := range role.GrantsOut {
+		if g.FromRoleID != g.ToRoleID {
+			info.GrantsOut = append(info.GrantsOut, g)
+		}
 	}
 	for childID := range role.Children {
 		info.SubRoleIDs = append(info.SubRoleIDs, childID)

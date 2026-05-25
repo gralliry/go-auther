@@ -26,23 +26,13 @@ package auther
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 
-	"auther/model"
+	"auther/internal/model"
 )
 
-// 类型别名：外部只需 import "auther" 即可使用以下类型。
-type (
-	Resource       = model.Resource
-	GrantInfo      = model.GrantInfo
-	RoleInfo       = model.RoleInfo
-	UserInfo       = model.UserInfo
-	PolicySnapshot = model.PolicySnapshot
-	RoleSnapshot   = model.RoleSnapshot
-	UserSnapshot   = model.UserSnapshot
-	GrantSnapshot  = model.GrantSnapshot
-)
+// GrantInfo 通过别名暴露给外部使用。
+type GrantInfo = model.GrantInfo
 
 // Authorizer 是权限系统的主入口，管理角色树、用户映射和资源授权。
 type Authorizer struct {
@@ -64,7 +54,7 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 		users:   make(map[string]*model.UserNode),
 	}
 
-	var snap *model.PolicySnapshot
+	var snap *PolicySnapshot
 	if adapter != nil {
 		var err error
 		snap, err = adapter.Load()
@@ -82,10 +72,11 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 	a.root = &model.RoleNode{
 		ID:         "root",
 		Children:   make(map[string]*model.RoleNode),
-		Resources:  map[Resource]bool{"/**": true},
-		GrantedMap: make(map[Resource]bool),
+		GrantedMap: map[string]bool{"/**": true},
 		Users:      make(map[string]*model.UserNode),
 	}
+	a.root.GrantsIn = append(a.root.GrantsIn, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
+	a.root.GrantsOut = append(a.root.GrantsOut, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
 	a.roles["root"] = a.root
 
 	if err := a.save(); err != nil {
@@ -97,7 +88,7 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 // buildTree 从持久化快照重建内存中的角色树。
 // 在加载过程中会自动修复损坏的数据（孤立角色、悬挂用户、无效授权等），
 // 并在确实清理了数据时才将修复后的状态写回适配器。
-func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
+func (a *Authorizer) buildTree(snapshot *PolicySnapshot) error {
 	a.roles = make(map[string]*model.RoleNode)
 	a.users = make(map[string]*model.UserNode)
 
@@ -120,17 +111,13 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 }
 
 // buildRoles 创建所有角色节点，返回根角色 ID 和是否发生过清理。
-func (a *Authorizer) buildRoles(roles []model.RoleSnapshot) (rootID string, cleansed bool) {
+func (a *Authorizer) buildRoles(roles []RoleSnapshot) (rootID string, cleansed bool) {
 	for _, rs := range roles {
 		role := &model.RoleNode{
 			ID:         rs.ID,
 			Children:   make(map[string]*model.RoleNode),
-			Resources:  make(map[Resource]bool),
-			GrantedMap: make(map[Resource]bool),
+			GrantedMap: make(map[string]bool),
 			Users:      make(map[string]*model.UserNode),
-		}
-		for _, res := range rs.Resources {
-			role.Resources[res] = true
 		}
 		a.roles[rs.ID] = role
 	}
@@ -149,10 +136,11 @@ func (a *Authorizer) buildRoles(roles []model.RoleSnapshot) (rootID string, clea
 			a.roles["root"] = &model.RoleNode{
 				ID:         "root",
 				Children:   make(map[string]*model.RoleNode),
-				Resources:  map[Resource]bool{"/**": true},
-				GrantedMap: make(map[Resource]bool),
+				GrantedMap: map[string]bool{"/**": true},
 				Users:      make(map[string]*model.UserNode),
 			}
+			a.roles["root"].GrantsIn = append(a.roles["root"].GrantsIn, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
+			a.roles["root"].GrantsOut = append(a.roles["root"].GrantsOut, model.GrantInfo{FromRoleID: "root", ToRoleID: "root", Resource: "/**"})
 		}
 	}
 	a.root = a.roles[rootID]
@@ -160,7 +148,7 @@ func (a *Authorizer) buildRoles(roles []model.RoleSnapshot) (rootID string, clea
 }
 
 // linkParents 为所有角色建立父子链接。无效父角色 → 挂载到根。
-func (a *Authorizer) linkParents(roles []model.RoleSnapshot, rootID string) (cleansed bool) {
+func (a *Authorizer) linkParents(roles []RoleSnapshot, rootID string) (cleansed bool) {
 	for _, rs := range roles {
 		if rs.ID == rootID {
 			continue
@@ -181,7 +169,7 @@ func (a *Authorizer) linkParents(roles []model.RoleSnapshot, rootID string) (cle
 }
 
 // loadUsers 加载用户快照。所属角色不存在 → 丢弃。
-func (a *Authorizer) loadUsers(users []model.UserSnapshot) (cleansed bool) {
+func (a *Authorizer) loadUsers(users []UserSnapshot) (cleansed bool) {
 	for _, us := range users {
 		role := a.roles[us.RoleID]
 		if role == nil {
@@ -196,7 +184,7 @@ func (a *Authorizer) loadUsers(users []model.UserSnapshot) (cleansed bool) {
 }
 
 // loadGrants 加载授权记录。无效授权、重复授权、自授权均被清洗。
-func (a *Authorizer) loadGrants(grants []model.GrantSnapshot) (cleansed bool) {
+func (a *Authorizer) loadGrants(grants []GrantSnapshot) (cleansed bool) {
 	seen := make(map[string]bool)
 	for _, gs := range grants {
 		fromRole := a.roles[gs.FromRoleID]
@@ -205,16 +193,11 @@ func (a *Authorizer) loadGrants(grants []model.GrantSnapshot) (cleansed bool) {
 			cleansed = true
 			continue
 		}
-		if gs.FromRoleID == gs.ToRoleID {
-			cleansed = true
-			toRole.Resources[gs.Resource] = true
-			continue
-		}
 		if !a.isAncestorOrSelf(gs.FromRoleID, gs.ToRoleID) {
 			cleansed = true
 			continue
 		}
-		key := gs.FromRoleID + "|" + gs.ToRoleID + "|" + string(gs.Resource)
+		key := gs.FromRoleID + "|" + gs.ToRoleID + "|" + gs.Resource
 		if seen[key] {
 			cleansed = true
 			continue
@@ -230,25 +213,18 @@ func (a *Authorizer) loadGrants(grants []model.GrantSnapshot) (cleansed bool) {
 }
 
 // snapshot 将当前内存中的角色树转换为可序列化的策略快照。
-func (a *Authorizer) snapshot() *model.PolicySnapshot {
-	snap := &model.PolicySnapshot{}
+func (a *Authorizer) snapshot() *PolicySnapshot {
+	snap := &PolicySnapshot{}
 
 	var walk func(role *model.RoleNode)
 	walk = func(role *model.RoleNode) {
-		rs := model.RoleSnapshot{
-			ID:        role.ID,
-			Resources: make([]Resource, 0, len(role.Resources)),
-		}
+		rs := RoleSnapshot{ID: role.ID}
 		if role.Parent != nil {
 			rs.ParentID = role.Parent.ID
 		}
-		for res := range role.Resources {
-			rs.Resources = append(rs.Resources, res)
-		}
-		sort.Slice(rs.Resources, func(i, j int) bool { return rs.Resources[i] < rs.Resources[j] })
 		snap.Roles = append(snap.Roles, rs)
 		for _, user := range role.Users {
-			snap.Users = append(snap.Users, model.UserSnapshot{ID: user.ID, RoleID: user.Role.ID})
+			snap.Users = append(snap.Users, UserSnapshot{ID: user.ID, RoleID: user.Role.ID})
 		}
 		for _, child := range role.Children {
 			walk(child)
@@ -260,10 +236,10 @@ func (a *Authorizer) snapshot() *model.PolicySnapshot {
 	var collectGrants func(role *model.RoleNode)
 	collectGrants = func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
-			key := g.FromRoleID + "|" + g.ToRoleID + "|" + string(g.Resource)
+			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
 			if !seen[key] {
 				seen[key] = true
-				snap.Grants = append(snap.Grants, model.GrantSnapshot{
+				snap.Grants = append(snap.Grants, GrantSnapshot{
 					FromRoleID: g.FromRoleID, ToRoleID: g.ToRoleID, Resource: g.Resource,
 				})
 			}

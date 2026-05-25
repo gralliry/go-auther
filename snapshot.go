@@ -1,4 +1,4 @@
-package model
+package auther
 
 // PolicySnapshot 是完整权限状态的扁平化快照，由适配器用于持久化。
 type PolicySnapshot struct {
@@ -9,9 +9,8 @@ type PolicySnapshot struct {
 
 // RoleSnapshot 是用于序列化的扁平角色记录。
 type RoleSnapshot struct {
-	ID        string   `json:"id"`
-	ParentID  string   `json:"parent_id"`
-	Resources []Resource `json:"resources"`
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id"`
 }
 
 // UserSnapshot 是用于序列化的扁平用户记录。
@@ -24,5 +23,5 @@ type UserSnapshot struct {
 type GrantSnapshot struct {
 	FromRoleID string `json:"from_role_id"`
 	ToRoleID   string `json:"to_role_id"`
-	Resource   Resource `json:"resource"`
+	Resource   string `json:"resource"`
 }
