@@ -122,12 +122,12 @@ type Adapter interface {
     Save(snapshot *snapshot.Policy) error
 
     // Incremental methods use snapshot types for future-proofing.
-    CreateRole(role snapshot.Role) error
-    DeleteRole(role snapshot.Role) error
-    CreateUser(user snapshot.User) error
-    DeleteUser(user snapshot.User) error
-    AddGrant(grant snapshot.Grant) error
-    RemoveGrant(grant snapshot.Grant) error
+    SetRole(role snapshot.Role) error
+    UnsetRole(role snapshot.Role) error
+    SetUser(user snapshot.User) error
+    UnsetUser(user snapshot.User) error
+    SetGrant(grant snapshot.Grant) error
+    UnsetGrant(grant snapshot.Grant) error
 }
 ```
 

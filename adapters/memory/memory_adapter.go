@@ -34,7 +34,7 @@ func (a *MemoryAdapter) Save(snapshot *snapshot.Policy) error {
 	return nil
 }
 
-func (a *MemoryAdapter) CreateRole(role snapshot.Role) error {
+func (a *MemoryAdapter) SetRole(role snapshot.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ensure()
@@ -42,7 +42,7 @@ func (a *MemoryAdapter) CreateRole(role snapshot.Role) error {
 	return nil
 }
 
-func (a *MemoryAdapter) DeleteRole(role snapshot.Role) error {
+func (a *MemoryAdapter) UnsetRole(role snapshot.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.snapshot == nil {
@@ -57,7 +57,7 @@ func (a *MemoryAdapter) DeleteRole(role snapshot.Role) error {
 	return nil
 }
 
-func (a *MemoryAdapter) CreateUser(user snapshot.User) error {
+func (a *MemoryAdapter) SetUser(user snapshot.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ensure()
@@ -65,7 +65,7 @@ func (a *MemoryAdapter) CreateUser(user snapshot.User) error {
 	return nil
 }
 
-func (a *MemoryAdapter) DeleteUser(user snapshot.User) error {
+func (a *MemoryAdapter) UnsetUser(user snapshot.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.snapshot == nil {
@@ -80,7 +80,7 @@ func (a *MemoryAdapter) DeleteUser(user snapshot.User) error {
 	return nil
 }
 
-func (a *MemoryAdapter) AddGrant(grant snapshot.Grant) error {
+func (a *MemoryAdapter) SetGrant(grant snapshot.Grant) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ensure()
@@ -88,7 +88,7 @@ func (a *MemoryAdapter) AddGrant(grant snapshot.Grant) error {
 	return nil
 }
 
-func (a *MemoryAdapter) RemoveGrant(grant snapshot.Grant) error {
+func (a *MemoryAdapter) UnsetGrant(grant snapshot.Grant) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.snapshot == nil {

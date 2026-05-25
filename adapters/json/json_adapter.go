@@ -78,7 +78,7 @@ func (ja *JSONAdapter) writeLocked() error {
 // Incremental methods modify the cached snapshot and write the full file.
 // The Authorizer calls these after completing the in-memory mutation.
 
-func (ja *JSONAdapter) CreateRole(role snapshot.Role) error {
+func (ja *JSONAdapter) SetRole(role snapshot.Role) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -88,7 +88,7 @@ func (ja *JSONAdapter) CreateRole(role snapshot.Role) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) DeleteRole(role snapshot.Role) error {
+func (ja *JSONAdapter) UnsetRole(role snapshot.Role) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -103,7 +103,7 @@ func (ja *JSONAdapter) DeleteRole(role snapshot.Role) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) CreateUser(user snapshot.User) error {
+func (ja *JSONAdapter) SetUser(user snapshot.User) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -113,7 +113,7 @@ func (ja *JSONAdapter) CreateUser(user snapshot.User) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) DeleteUser(user snapshot.User) error {
+func (ja *JSONAdapter) UnsetUser(user snapshot.User) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -128,7 +128,7 @@ func (ja *JSONAdapter) DeleteUser(user snapshot.User) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) AddGrant(grant snapshot.Grant) error {
+func (ja *JSONAdapter) SetGrant(grant snapshot.Grant) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -138,7 +138,7 @@ func (ja *JSONAdapter) AddGrant(grant snapshot.Grant) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) RemoveGrant(grant snapshot.Grant) error {
+func (ja *JSONAdapter) UnsetGrant(grant snapshot.Grant) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {

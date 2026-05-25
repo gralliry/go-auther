@@ -185,11 +185,11 @@ func (a *SQLAdapter) Save(snapshot *snapshot.Policy) error {
 }
 
 // ---------------------------------------------------------------------------
-// Incremental interface (auther.IncrementalAdapter)
+// Incremental interface (auther.Adapter)
 // ---------------------------------------------------------------------------
 
-// CreateRole inserts a single role row.
-func (a *SQLAdapter) CreateRole(role snapshot.Role) error {
+// SetRole inserts a single role row.
+func (a *SQLAdapter) SetRole(role snapshot.Role) error {
 	_, err := a.db.Exec(
 		fmt.Sprintf("INSERT INTO %s (id, parent_id) VALUES (?, ?)", a.rolesTbl),
 		role.ID, role.ParentID,
@@ -200,8 +200,8 @@ func (a *SQLAdapter) CreateRole(role snapshot.Role) error {
 	return nil
 }
 
-// DeleteRole removes a single role row.
-func (a *SQLAdapter) DeleteRole(role snapshot.Role) error {
+// UnsetRole removes a single role row.
+func (a *SQLAdapter) UnsetRole(role snapshot.Role) error {
 	_, err := a.db.Exec(
 		fmt.Sprintf("DELETE FROM %s WHERE id = ?", a.rolesTbl),
 		role.ID,
@@ -212,8 +212,8 @@ func (a *SQLAdapter) DeleteRole(role snapshot.Role) error {
 	return nil
 }
 
-// CreateUser inserts a single user row.
-func (a *SQLAdapter) CreateUser(user snapshot.User) error {
+// SetUser inserts a single user row.
+func (a *SQLAdapter) SetUser(user snapshot.User) error {
 	_, err := a.db.Exec(
 		fmt.Sprintf("INSERT INTO %s (id, role_id) VALUES (?, ?)", a.usersTbl),
 		user.ID, user.RoleID,
@@ -224,8 +224,8 @@ func (a *SQLAdapter) CreateUser(user snapshot.User) error {
 	return nil
 }
 
-// DeleteUser removes a single user row.
-func (a *SQLAdapter) DeleteUser(user snapshot.User) error {
+// UnsetUser removes a single user row.
+func (a *SQLAdapter) UnsetUser(user snapshot.User) error {
 	_, err := a.db.Exec(
 		fmt.Sprintf("DELETE FROM %s WHERE id = ? AND role_id = ?", a.usersTbl),
 		user.ID, user.RoleID,
@@ -236,8 +236,8 @@ func (a *SQLAdapter) DeleteUser(user snapshot.User) error {
 	return nil
 }
 
-// AddGrant inserts a single grant row.
-func (a *SQLAdapter) AddGrant(grant snapshot.Grant) error {
+// SetGrant inserts a single grant row.
+func (a *SQLAdapter) SetGrant(grant snapshot.Grant) error {
 	_, err := a.db.Exec(
 		fmt.Sprintf("INSERT INTO %s (from_role_id, to_role_id, resource) VALUES (?, ?, ?)", a.grantsTbl),
 		grant.FromRoleID, grant.ToRoleID, grant.Resource,
@@ -248,8 +248,8 @@ func (a *SQLAdapter) AddGrant(grant snapshot.Grant) error {
 	return nil
 }
 
-// RemoveGrant deletes a single grant row.
-func (a *SQLAdapter) RemoveGrant(grant snapshot.Grant) error {
+// UnsetGrant deletes a single grant row.
+func (a *SQLAdapter) UnsetGrant(grant snapshot.Grant) error {
 	_, err := a.db.Exec(
 		fmt.Sprintf("DELETE FROM %s WHERE from_role_id = ? AND to_role_id = ? AND resource = ?", a.grantsTbl),
 		grant.FromRoleID, grant.ToRoleID, grant.Resource,

@@ -265,36 +265,36 @@ func (a *Authorizer) save() error {
 	return a.adapter.Save(a.snapshot())
 }
 
-// saveCreateRole 持久化角色创建。
-func (a *Authorizer) saveCreateRole(roleID, parentID string) error {
+// saveSetRole 持久化角色创建。
+func (a *Authorizer) saveSetRole(roleID, parentID string) error {
 	if a.adapter == nil {
 		return nil
 	}
-	return a.adapter.CreateRole(snapshot.Role{ID: roleID, ParentID: parentID})
+	return a.adapter.SetRole(snapshot.Role{ID: roleID, ParentID: parentID})
 }
 
-// saveCreateUser 持久化用户创建。
-func (a *Authorizer) saveCreateUser(roleID, userID string) error {
+// saveSetUser 持久化用户创建。
+func (a *Authorizer) saveSetUser(roleID, userID string) error {
 	if a.adapter == nil {
 		return nil
 	}
-	return a.adapter.CreateUser(snapshot.User{ID: userID, RoleID: roleID})
+	return a.adapter.SetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
-// saveDeleteUser 持久化用户删除。
-func (a *Authorizer) saveDeleteUser(roleID, userID string) error {
+// saveUnsetUser 持久化用户删除。
+func (a *Authorizer) saveUnsetUser(roleID, userID string) error {
 	if a.adapter == nil {
 		return nil
 	}
-	return a.adapter.DeleteUser(snapshot.User{ID: userID, RoleID: roleID})
+	return a.adapter.UnsetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
-// saveGrant 持久化授权添加。
-func (a *Authorizer) saveGrant(fromRoleID, toRoleID, resource string) error {
+// saveSetGrant 持久化授权添加。
+func (a *Authorizer) saveSetGrant(fromRoleID, toRoleID, resource string) error {
 	if a.adapter == nil {
 		return nil
 	}
-	return a.adapter.AddGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource})
+	return a.adapter.SetGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: resource})
 }
 
 // subtree 收集指定角色及其所有后代角色，使用 BFS 遍历。

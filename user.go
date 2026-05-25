@@ -35,7 +35,7 @@ func (a *Authorizer) CreateUser(roleID, userID string) error {
 	a.users[userID] = user
 	role.Users[userID] = user
 
-	return a.saveCreateUser(roleID, userID)
+	return a.saveSetUser(roleID, userID)
 }
 
 // DeleteUser 从指定角色中删除用户。roleID 必须与用户所属角色匹配。
@@ -60,7 +60,7 @@ func (a *Authorizer) DeleteUser(roleID, userID string) error {
 	delete(role.Users, userID)
 	delete(a.users, userID)
 
-	return a.saveDeleteUser(roleID, userID)
+	return a.saveUnsetUser(roleID, userID)
 }
 
 // GetUser 返回指定用户的详细信息。

@@ -18,21 +18,21 @@ type Adapter interface {
 	// Save persists the complete policy snapshot to storage.
 	Save(s *snapshot.Policy) error
 
-	// CreateRole persists a new role.
-	CreateRole(role snapshot.Role) error
+	// SetRole persists a new role.
+	SetRole(role snapshot.Role) error
 
-	// DeleteRole removes a single role.
-	DeleteRole(role snapshot.Role) error
+	// UnsetRole removes a single role.
+	UnsetRole(role snapshot.Role) error
 
-	// CreateUser persists a new user.
-	CreateUser(user snapshot.User) error
+	// SetUser persists a new user.
+	SetUser(user snapshot.User) error
 
-	// DeleteUser removes a single user.
-	DeleteUser(user snapshot.User) error
+	// UnsetUser removes a single user.
+	UnsetUser(user snapshot.User) error
 
-	// AddGrant persists a new grant.
-	AddGrant(grant snapshot.Grant) error
+	// SetGrant persists a new grant.
+	SetGrant(grant snapshot.Grant) error
 
-	// RemoveGrant removes a single grant.
-	RemoveGrant(grant snapshot.Grant) error
+	// UnsetGrant removes a single grant.
+	UnsetGrant(grant snapshot.Grant) error
 }

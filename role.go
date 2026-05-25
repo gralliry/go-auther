@@ -41,7 +41,7 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	a.roles[roleID] = role
 	parent.Children[roleID] = role
 
-	return a.saveCreateRole(roleID, parentID)
+	return a.saveSetRole(roleID, parentID)
 }
 
 // DeleteRole 删除指定角色，级联删除其所有子角色及关联用户。
