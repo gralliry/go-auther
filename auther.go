@@ -100,8 +100,8 @@ func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
 	cleansed = a.loadUsers(snapshot.Users) || cleansed
 	cleansed = a.loadGrants(snapshot.Grants) || cleansed
 
-	if cleansed && a.adapter != nil {
-		if err := a.adapter.Save(a.snapshot()); err != nil {
+	if cleansed {
+		if err := a.save(); err != nil {
 			return fmt.Errorf("auther: persist cleansed state: %w", err)
 		}
 	}
@@ -328,4 +328,3 @@ func (a *Authorizer) checkCycle() error {
 	}
 	return nil
 }
-
