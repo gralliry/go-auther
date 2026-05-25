@@ -19,34 +19,105 @@ func Match(pattern, target string) bool {
 	if !HasWildcard(pattern) {
 		return false
 	}
-	pat := ParseSegs(pattern)
-	tgt := ParseSegs(target)
-	return DPMatch(pat, tgt)
+	return matchIter(pattern, target)
 }
 
-// DPMatch 使用自底向上动态规划匹配模式段与目标段。
-func DPMatch(pat, tgt segs) bool {
-	n, m := pat.N(), tgt.N()
-	rowStride := m + 1
-	dp := make([]bool, (n+1)*rowStride)
-	idx := func(i, j int) int { return i*rowStride + j }
+// matchIter 使用分段迭代 + 回溯实现 glob 匹配，零堆分配。
+// * 匹配单段（不跨越 '/'），** 匹配零或多段。
+func matchIter(p, t string) bool {
+	pi, ti := 0, 0 // 字符级指针
+	starPS, starTS := -1, -1 // ** 回溯点：模式段结束位置, 目标位置
 
-	dp[idx(n, m)] = true
-	for i := n - 1; i >= 0; i-- {
-		if pat.At(i) == "**" {
-			dp[idx(i, m)] = dp[idx(i+1, m)]
+	for {
+		// 跳过前导 '/'
+		for pi < len(p) && p[pi] == '/' {
+			pi++
 		}
-	}
-	for i := n - 1; i >= 0; i-- {
-		pSeg := pat.At(i)
-		for j := m - 1; j >= 0; j-- {
-			switch {
-			case pSeg == "**":
-				dp[idx(i, j)] = dp[idx(i+1, j)] || dp[idx(i, j+1)]
-			case pSeg == "*" || pSeg == tgt.At(j):
-				dp[idx(i, j)] = dp[idx(i+1, j+1)]
+		for ti < len(t) && t[ti] == '/' {
+			ti++
+		}
+
+		// 两者均耗尽 → 匹配成功
+		if pi >= len(p) && ti >= len(t) {
+			return true
+		}
+
+		// 模式耗尽但目标未耗尽 → 回溯或失败
+		if pi >= len(p) {
+			if starPS != -1 {
+				pi = starPS
+				ti = starTS
+				// ** 多消耗一个目标段（含尾部 '/'）
+				for ti < len(t) && t[ti] != '/' {
+					ti++
+				}
+				if ti < len(t) && t[ti] == '/' {
+					ti++
+				}
+				starTS = ti
+				continue
 			}
+			return false
 		}
+
+		// 目标耗尽，剩余模式只能包含 **
+		if ti >= len(t) {
+			for pi < len(p) {
+				if p[pi] == '/' {
+					pi++
+					continue
+				}
+				if p[pi] == '*' && pi+1 < len(p) && p[pi+1] == '*' {
+					pi += 2
+					continue
+				}
+				// * 需要消费一段，目标已耗尽 → 失败
+				return false
+			}
+			return true
+		}
+
+		// 提取当前模式段
+		pStart := pi
+		for pi < len(p) && p[pi] != '/' {
+			pi++
+		}
+		pSeg := p[pStart:pi]
+
+		// **：零或多段
+		if pSeg == "**" {
+			starPS = pi // 下一模式段起始位置
+			starTS = ti // 当前目标段起始位置
+			continue
+		}
+
+		// 提取当前目标段
+		tStart := ti
+		for ti < len(t) && t[ti] != '/' {
+			ti++
+		}
+		tSeg := t[tStart:ti]
+
+		// * 或字面匹配
+		if pSeg == "*" || pSeg == tSeg {
+			continue
+		}
+
+		// 不匹配，尝试 ** 回溯
+		if starPS != -1 {
+			pi = starPS
+			ti = starTS
+			// ** 多消耗一个目标段
+			for ti < len(t) && t[ti] != '/' {
+				ti++
+			}
+			if ti < len(t) && t[ti] == '/' {
+				ti++
+			}
+			starTS = ti
+			continue
+		}
+
+		return false
 	}
-	return dp[idx(0, 0)]
 }

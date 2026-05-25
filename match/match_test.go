@@ -79,3 +79,37 @@ func TestMatchDoubleStarAlone(t *testing.T) {
 		t.Error("** should match multiple segments")
 	}
 }
+
+// Benchmarks
+
+var benchResult bool
+
+func BenchmarkMatchExact(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchResult = Match("/user/create", "/user/create")
+	}
+}
+
+func BenchmarkMatchSingleStar(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchResult = Match("/user/*/edit", "/user/alice/edit")
+	}
+}
+
+func BenchmarkMatchDoubleStar(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchResult = Match("/a/**/z", "/a/b/c/d/e/z")
+	}
+}
+
+func BenchmarkMatchNoMatch(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchResult = Match("/user/create", "/user/delete")
+	}
+}
+
+func BenchmarkMatchLongDoubleStar(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		benchResult = Match("/api/v1/**", "/api/v1/users/admin/permissions/read/write")
+	}
+}
