@@ -7,8 +7,9 @@
 package fileadapter
 
 import (
-	"encoding/json"
 	"os"
+
+	"github.com/goccy/go-json"
 	"sync"
 
 	"auther/model"

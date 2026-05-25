@@ -99,10 +99,28 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 	a.roles = make(map[string]*model.RoleNode)
 	a.users = make(map[string]*model.UserNode)
-	cleansed := false
 
-	// 第一阶段：创建所有角色节点。
-	for _, rs := range snapshot.Roles {
+	rootID, cleansed := a.buildRoles(snapshot.Roles)
+	cleansed = a.linkParents(snapshot.Roles, rootID) || cleansed
+
+	if err := a.checkCycle(); err != nil {
+		return err
+	}
+
+	cleansed = a.loadUsers(snapshot.Users) || cleansed
+	cleansed = a.loadGrants(snapshot.Grants) || cleansed
+
+	if cleansed && a.adapter != nil {
+		if err := a.adapter.Save(a.snapshot()); err != nil {
+			return fmt.Errorf("auther: persist cleansed state: %w", err)
+		}
+	}
+	return nil
+}
+
+// buildRoles 创建所有角色节点，返回根角色 ID 和是否发生过清理。
+func (a *Authorizer) buildRoles(roles []model.RoleSnapshot) (rootID string, cleansed bool) {
+	for _, rs := range roles {
 		role := &model.RoleNode{
 			ID:         rs.ID,
 			Children:   make(map[string]*model.RoleNode),
@@ -116,10 +134,8 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		a.roles[rs.ID] = role
 	}
 
-	// 第二阶段：确定根角色 —— 首个 ParentID 为空的角色胜出。
-	// 如果不存在根角色，则自动创建一个拥有 "/**" 资源的根。
-	var rootID string
-	for _, rs := range snapshot.Roles {
+	// 确定根角色：首个 ParentID 为空的角色。
+	for _, rs := range roles {
 		if rs.ParentID == "" {
 			rootID = rs.ID
 			break
@@ -130,20 +146,21 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		rootID = "root"
 		if a.roles["root"] == nil {
 			a.roles["root"] = &model.RoleNode{
-				ID:        "root",
-				Children:  make(map[string]*model.RoleNode),
-				Resources: map[string]bool{"/**": true},
+				ID:         "root",
+				Children:   make(map[string]*model.RoleNode),
+				Resources:  map[string]bool{"/**": true},
 				GrantedMap: make(map[string]bool),
-				Users:     make(map[string]*model.UserNode),
+				Users:      make(map[string]*model.UserNode),
 			}
 		}
 	}
 	a.root = a.roles[rootID]
+	return rootID, cleansed
+}
 
-	// 第三阶段：建立父子关系。
-	// 孤立角色（ParentID 无效）→ 重新挂载到根角色。
-	// 多余的根候选者（多个角色 ParentID 为空）→ 作为根的子角色。
-	for _, rs := range snapshot.Roles {
+// linkParents 为所有角色建立父子链接。无效父角色 → 挂载到根。
+func (a *Authorizer) linkParents(roles []model.RoleSnapshot, rootID string) (cleansed bool) {
+	for _, rs := range roles {
 		if rs.ID == rootID {
 			continue
 		}
@@ -159,14 +176,12 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		role.Parent = parent
 		parent.Children[rs.ID] = role
 	}
+	return cleansed
+}
 
-	// 检测是否存在循环层级关系。
-	if err := a.checkCycle(); err != nil {
-		return err
-	}
-
-	// 第四阶段：加载用户。所属角色不存在的用户 → 丢弃。
-	for _, us := range snapshot.Users {
+// loadUsers 加载用户快照。所属角色不存在 → 丢弃。
+func (a *Authorizer) loadUsers(users []model.UserSnapshot) (cleansed bool) {
+	for _, us := range users {
 		role := a.roles[us.RoleID]
 		if role == nil {
 			cleansed = true
@@ -176,24 +191,24 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		a.users[us.ID] = user
 		role.Users[us.ID] = user
 	}
+	return cleansed
+}
 
-	// 第五阶段：加载授权记录并校验。
-	// 无效授权（From/To 角色不存在、非祖先关系、重复）→ 静默丢弃。
+// loadGrants 加载授权记录。无效授权、重复授权、自授权均被清洗。
+func (a *Authorizer) loadGrants(grants []model.GrantSnapshot) (cleansed bool) {
 	seen := make(map[string]bool)
-	for _, gs := range snapshot.Grants {
+	for _, gs := range grants {
 		fromRole := a.roles[gs.FromRoleID]
 		toRole := a.roles[gs.ToRoleID]
 		if fromRole == nil || toRole == nil {
 			cleansed = true
 			continue
 		}
-		// 自授权：合并到角色自身的资源列表中。
 		if gs.FromRoleID == gs.ToRoleID {
 			cleansed = true
 			toRole.Resources[gs.Resource] = true
 			continue
 		}
-		// 校验祖先约束：授权方必须是接收方的祖先角色。
 		if !a.isAncestorOrSelf(gs.FromRoleID, gs.ToRoleID) {
 			cleansed = true
 			continue
@@ -210,14 +225,7 @@ func (a *Authorizer) buildTree(snapshot *model.PolicySnapshot) error {
 		toRole.GrantsIn = append(toRole.GrantsIn, grant)
 		toRole.GrantedMap[gs.Resource] = true
 	}
-
-	// 仅在确实清理了数据且存在适配器时才写回持久化存储。
-	if cleansed && a.adapter != nil {
-		if err := a.adapter.Save(a.snapshot()); err != nil {
-			return fmt.Errorf("auther: persist cleansed state: %w", err)
-		}
-	}
-	return nil
+	return cleansed
 }
 
 // snapshot 将当前内存中的角色树转换为可序列化的策略快照。
@@ -295,22 +303,11 @@ func (a *Authorizer) subtree(roleID string) []*model.RoleNode {
 }
 
 // isAncestor 判断 ancestorID 是否为 descendantID 的祖先角色。
-// 沿父指针向上遍历，同时检测循环引用防止死循环。
 func (a *Authorizer) isAncestor(ancestorID, descendantID string) bool {
-	d := a.roles[descendantID]
-	if d == nil {
-		return false
-	}
-	seen := make(map[string]bool)
-	for d != nil {
-		if seen[d.ID] {
-			return false
-		}
+	for d := a.roles[descendantID]; d != nil; d = d.Parent {
 		if d.ID == ancestorID {
 			return true
 		}
-		seen[d.ID] = true
-		d = d.Parent
 	}
 	return false
 }
@@ -320,19 +317,20 @@ func (a *Authorizer) isAncestorOrSelf(aID, dID string) bool {
 	return aID == dID || a.isAncestor(aID, dID)
 }
 
-// checkCycle 使用 Floyd 快慢指针算法检测角色树中是否存在循环引用。
+// checkCycle 检测角色树中是否存在循环引用，O(n) 时间 O(n) 空间。
 func (a *Authorizer) checkCycle() error {
+	verified := make(map[string]bool)
 	for _, role := range a.roles {
-		slow, fast := role, role
-		for fast != nil && fast.Parent != nil {
-			slow = slow.Parent
-			fast = fast.Parent.Parent
-			if slow == nil || fast == nil {
-				break
-			}
-			if slow.ID == fast.ID {
+		path := make(map[string]bool)
+		for cur := role; cur != nil; cur = cur.Parent {
+			if path[cur.ID] {
 				return fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, role.ID)
 			}
+			if verified[cur.ID] {
+				break
+			}
+			path[cur.ID] = true
+			verified[cur.ID] = true
 		}
 	}
 	return nil

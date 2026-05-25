@@ -50,41 +50,22 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	// 收集待删除的子树，同时清理子角色中的用户。
+	// 收集待删除的子树。
 	subtree := a.subtree(roleID)
 	subtreeSet := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
 		subtreeSet[r.ID] = true
 	}
 
+	// 移除子树中所有用户。
 	for _, r := range subtree {
 		for userID := range r.Users {
 			delete(a.users, userID)
 		}
 	}
 
-	// 从幸存角色中移除与已删除子树相关的授权记录。
-	for _, r := range a.roles {
-		if subtreeSet[r.ID] {
-			continue
-		}
-		r.GrantsIn = filterByFrom(r.GrantsIn, subtreeSet)
-		r.GrantsOut = filterByTo(r.GrantsOut, subtreeSet)
-	}
-
-	// 重建幸存角色的 GrantedMap，并清空匹配缓存。
-	for _, r := range a.roles {
-		if subtreeSet[r.ID] {
-			continue
-		}
-		r.GrantedMap = make(map[string]bool)
-		for _, g := range r.GrantsIn {
-			if !subtreeSet[g.FromRoleID] {
-				r.GrantedMap[g.Resource] = true
-			}
-		}
-		r.ResetMatchCache()
-	}
+	// 清理幸存角色中与已删除角色相关的授权记录。
+	a.cleanGrantsExcluding(subtreeSet)
 
 	// 解除父角色引用后删除子树中的所有角色。
 	if target.Parent != nil {
@@ -95,6 +76,30 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	}
 
 	return a.save()
+}
+
+// cleanGrantsExcluding 从幸存角色中移除所有关联角色在排除集中的授权记录，
+// 并重建幸存角色的 GrantedMap 和匹配缓存。
+func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
+	for _, r := range a.roles {
+		if excluded[r.ID] {
+			continue
+		}
+		r.GrantsIn = filterByFrom(r.GrantsIn, excluded)
+		r.GrantsOut = filterByTo(r.GrantsOut, excluded)
+	}
+	for _, r := range a.roles {
+		if excluded[r.ID] {
+			continue
+		}
+		r.GrantedMap = make(map[string]bool)
+		for _, g := range r.GrantsIn {
+			if !excluded[g.FromRoleID] {
+				r.GrantedMap[g.Resource] = true
+			}
+		}
+		r.ResetMatchCache()
+	}
 }
 
 // GetRole 返回指定角色的详细信息。

@@ -91,27 +91,39 @@ func (a *Authorizer) revokeLocked(fromRoleID, toRoleID, resource string) error {
 		return fmt.Errorf("%w", ErrGrantNotFound)
 	}
 
-	// 自撤销：从角色自身资源中移除。
 	if fromRoleID == toRoleID {
-		if !toRole.Resources[resource] {
-			return ErrGrantNotFound
-		}
-		delete(toRole.Resources, resource)
-		toRole.ResetMatchCache()
-		return a.save()
+		return a.revokeSelfLocked(toRole, resource)
 	}
+	return a.revokeDelegatedLocked(fromRole, toRole, resource)
+}
 
-	// 从授权方和接收方的授权列表中双向删除该条授权记录。
+// revokeSelfLocked 移除角色自身的资源权限。
+func (a *Authorizer) revokeSelfLocked(role *model.RoleNode, resource string) error {
+	if !role.Resources[resource] {
+		return ErrGrantNotFound
+	}
+	delete(role.Resources, resource)
+	role.ResetMatchCache()
+	return a.save()
+}
+
+// revokeDelegatedLocked 撤销委托授权，并级联清理子树中相同资源的子授权。
+func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, resource string) error {
+	// 双向删除授权记录。
 	found := false
 	for i, g := range fromRole.GrantsOut {
-		if g.ToRoleID == toRoleID && g.Resource == resource {
+		if g.ToRoleID == toRole.ID && g.Resource == resource {
 			fromRole.GrantsOut = append(fromRole.GrantsOut[:i], fromRole.GrantsOut[i+1:]...)
 			found = true
 			break
 		}
 	}
+	if !found {
+		return fmt.Errorf("%w: %s -> %s %s", ErrGrantNotFound, fromRole.ID, toRole.ID, resource)
+	}
+
 	for i, g := range toRole.GrantsIn {
-		if g.FromRoleID == fromRoleID && g.Resource == resource {
+		if g.FromRoleID == fromRole.ID && g.Resource == resource {
 			toRole.GrantsIn = append(toRole.GrantsIn[:i], toRole.GrantsIn[i+1:]...)
 			break
 		}
@@ -119,14 +131,10 @@ func (a *Authorizer) revokeLocked(fromRoleID, toRoleID, resource string) error {
 	if !hasGrant(toRole.GrantsIn, resource) {
 		delete(toRole.GrantedMap, resource)
 	}
-	if !found {
-		return fmt.Errorf("%w: %s -> %s %s", ErrGrantNotFound, fromRoleID, toRoleID, resource)
-	}
-
 	toRole.ResetMatchCache()
 
 	// 级联清理：删除子树中所有针对同一资源的子授权。
-	subtree := a.subtree(toRoleID)
+	subtree := a.subtree(toRole.ID)
 	subtreeSet := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
 		subtreeSet[r.ID] = true

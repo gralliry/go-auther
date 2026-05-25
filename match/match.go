@@ -1,5 +1,7 @@
 package match
 
+const noStar = -1
+
 // HasWildcard 判断字符串是否包含通配符 '*'。
 func HasWildcard(s string) bool {
 	for i := 0; i < len(s); i++ {
@@ -25,7 +27,7 @@ func Match(pattern, target string) bool {
 // * 匹配单段，** 匹配零或多段。
 func matchGlob(p, t string) bool {
 	pi, ti := 0, 0
-	starPi, starTi := -1, -1
+	starPi, starTi := noStar, noStar
 
 	for {
 		// 跳过前导 '/'
@@ -43,18 +45,9 @@ func matchGlob(p, t string) bool {
 
 		// 模式耗尽，尝试 ** 回溯多消耗一段
 		if pi >= len(p) {
-			if starPi == -1 {
+			if !backtrackStar(&pi, &ti, starPi, &starTi, t) {
 				return false
 			}
-			pi = starPi
-			ti = starTi
-			for ti < len(t) && t[ti] != '/' {
-				ti++
-			}
-			if ti < len(t) {
-				ti++ // skip '/'
-			}
-			starTi = ti
 			continue
 		}
 
@@ -89,19 +82,27 @@ func matchGlob(p, t string) bool {
 		}
 
 		// 不匹配，尝试 ** 回溯
-		if starPi == -1 {
+		if !backtrackStar(&pi, &ti, starPi, &starTi, t) {
 			return false
 		}
-		pi = starPi
-		ti = starTi
-		for ti < len(t) && t[ti] != '/' {
-			ti++
-		}
-		if ti < len(t) {
-			ti++ // skip '/'
-		}
-		starTi = ti
 	}
+}
+
+// backtrackStar 尝试通过 ** 回溯点多消耗目标的一段。
+func backtrackStar(pi, ti *int, starPi int, starTi *int, t string) bool {
+	if starPi == noStar {
+		return false
+	}
+	*pi = starPi
+	*ti = *starTi
+	for *ti < len(t) && t[*ti] != '/' {
+		*ti++
+	}
+	if *ti < len(t) {
+		*ti++ // skip '/'
+	}
+	*starTi = *ti
+	return true
 }
 
 // tailGlobStar 检查 pattern 剩余部分是否只包含 '/' 和通配符。
