@@ -1,7 +1,7 @@
 # go-auther
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/gralliry/go-auther.svg)](https://pkg.go.dev/github.com/gralliry/go-auther)
-[![Go Version](https://img.shields.io/github/go-mod/go-version/gralliry/go-auther)](https://github.com/gralliry/go-auther)
+[![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/dl/)
 
 Role-tree authorization library for Go. Explicit resource delegation with glob matching — no implicit inheritance.
 
