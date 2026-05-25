@@ -226,8 +226,8 @@ func (a *Authorizer) loadGrants(grants []snapshot.Grant) (cleansed bool) {
 	return cleansed
 }
 
-// snapshot 将当前内存中的角色树转换为可序列化的策略快照，使用 BFS 遍历。
-func (a *Authorizer) snapshot() *snapshot.Policy {
+// save 将当前角色树以 BFS 遍历序列化为快照并全量写入适配器。
+func (a *Authorizer) save() error {
 	snap := &snapshot.Policy{}
 	seen := make(map[string]bool)
 	queue := []*model.RoleNode{a.root}
@@ -258,12 +258,7 @@ func (a *Authorizer) snapshot() *snapshot.Policy {
 			queue = append(queue, child)
 		}
 	}
-	return snap
-}
-
-// save 将当前状态全量写入适配器。
-func (a *Authorizer) save() error {
-	return a.adapter.Save(a.snapshot())
+	return a.adapter.Save(snap)
 }
 
 // saveSetRole 持久化角色创建。
