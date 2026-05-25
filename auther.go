@@ -56,64 +56,58 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 		roles:   make(map[string]*model.RoleNode),
 		users:   make(map[string]*model.UserNode),
 	}
-	return a, nil
-}
-
-// load 从持久化快照重建内存中的角色树。
-// 在加载过程中会自动修复损坏的数据（孤立角色、悬挂用户、无效授权等），
-// 并在确实清理了数据时才将修复后的状态写回适配器。
-func (a *Authorizer) Load() error {
-	// 加载数据
-	snap, err := a.adapter.Load()
-	if err != nil {
-		return fmt.Errorf("auther: load policy: %w", err)
+	if err := a.Load(); err != nil {
+		return nil, err
 	}
-	if len(snap.Roles) == 0 {
-		return nil
-	}
-	// 组成数据
-
-	cleansed, err := a.loadRoles(snap.Roles)
-	if err != nil {
-		return err
-	}
-
-	// 不要合并，可能有短路行为
-	cleansed = a.loadUsers(snap.Users) || cleansed
-	cleansed = a.loadGrants(snap.Grants) || cleansed
-
-	if cleansed {
-		if err := a.save(); err != nil {
-			return fmt.Errorf("auther: persist cleansed state: %w", err)
-		}
-	}
-	return nil
-}
-
-// loadRoles 创建角色节点、建立父子链接并检测循环引用，返回清洗标志和错误。
-func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool, err error) {
-	for _, rs := range roles {
-		a.roles[rs.ID] = &model.RoleNode{
-			ID:         rs.ID,
-			Children:   make(map[string]*model.RoleNode),
-			GrantedMap: make(map[string]bool),
-			Users:      make(map[string]*model.UserNode),
-		}
-	}
-
-	var root *model.RoleNode
-	if root = a.roles["root"]; root == nil {
-		cleansed = true
-		root = &model.RoleNode{
+	if a.roles["root"] == nil {
+		a.roles["root"] = &model.RoleNode{
 			ID:         "root",
 			Children:   make(map[string]*model.RoleNode),
 			GrantedMap: map[string]bool{"/**": true},
 			Users:      make(map[string]*model.UserNode),
 		}
+		if err := a.save(); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
+}
+
+// Load 从适配器加载数据并重建角色树，自动修复损坏数据后写回。
+func (a *Authorizer) Load() error {
+	snap, err := a.adapter.Load()
+	if err != nil {
+		return fmt.Errorf("auther: load policy: %w", err)
+	}
+	if snap == nil || len(snap.Roles) == 0 {
+		return nil
+	}
+
+	a.roles = make(map[string]*model.RoleNode)
+	a.users = make(map[string]*model.UserNode)
+	var cleansed bool
+
+	// 创建所有角色节点。
+	for _, rs := range snap.Roles {
+		a.roles[rs.ID] = &model.RoleNode{
+			ID: rs.ID, Children: make(map[string]*model.RoleNode),
+			GrantedMap: make(map[string]bool), Users: make(map[string]*model.UserNode),
+		}
+	}
+
+	// 确保根角色存在。
+	root := a.roles["root"]
+	if root == nil {
+		cleansed = true
+		root = &model.RoleNode{
+			ID: "root", Children: make(map[string]*model.RoleNode),
+			GrantedMap: map[string]bool{"/**": true}, Users: make(map[string]*model.UserNode),
+		}
 		a.roles["root"] = root
 	}
 
-	for _, rs := range roles {
+	// 建立父子链接。
+	for _, rs := range snap.Roles {
 		if rs.ID == "root" {
 			continue
 		}
@@ -127,12 +121,13 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool, err error)
 		parent.Children[rs.ID] = role
 	}
 
+	// 检测循环引用。
 	verified := make(map[string]bool)
 	for _, role := range a.roles {
 		path := make(map[string]bool)
 		for cur := role; cur != nil; cur = cur.Parent {
 			if path[cur.ID] {
-				return false, fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, role.ID)
+				return fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, role.ID)
 			}
 			if verified[cur.ID] {
 				break
@@ -142,12 +137,8 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool, err error)
 		}
 	}
 
-	return cleansed, nil
-}
-
-// loadUsers 加载用户快照。所属角色不存在 → 丢弃。
-func (a *Authorizer) loadUsers(users []snapshot.User) (cleansed bool) {
-	for _, us := range users {
+	// 加载用户。
+	for _, us := range snap.Users {
 		role := a.roles[us.RoleID]
 		if role == nil {
 			cleansed = true
@@ -157,49 +148,42 @@ func (a *Authorizer) loadUsers(users []snapshot.User) (cleansed bool) {
 		a.users[us.ID] = user
 		role.Users[us.ID] = user
 	}
-	return cleansed
-}
 
-// loadGrants 加载授权记录。无效授权、重复授权、自授权（转为 GrantedMap 条目）均被清洗。
-func (a *Authorizer) loadGrants(grants []snapshot.Grant) (cleansed bool) {
-	seen := make(map[string]bool)
-	for _, gs := range grants {
-		fromRole := a.roles[gs.FromRoleID]
-		toRole := a.roles[gs.ToRoleID]
-
-		// 无效授权：源角色或目标角色不存在。
+	// 加载授权。
+	grantSeen := make(map[string]bool)
+	for _, gs := range snap.Grants {
+		fromRole, toRole := a.roles[gs.FromRoleID], a.roles[gs.ToRoleID]
 		if fromRole == nil || toRole == nil {
 			cleansed = true
 			continue
 		}
-
-		// 自授权：将资源直接加入 GrantedMap，不创建 GrantInfo 记录。
 		if gs.FromRoleID == gs.ToRoleID {
 			cleansed = true
 			toRole.GrantedMap[gs.Resource] = true
 			continue
 		}
-
-		// 无效授权：目标角色不是源角色的祖先。
 		if !a.isAncestor(gs.FromRoleID, gs.ToRoleID) {
 			cleansed = true
 			continue
 		}
-
-		// 重复授权：跳过已存在的授权记录。
 		key := gs.FromRoleID + "|" + gs.ToRoleID + "|" + gs.Resource
-		if seen[key] {
+		if grantSeen[key] {
 			cleansed = true
 			continue
 		}
-		seen[key] = true
-
+		grantSeen[key] = true
 		grant := &model.GrantInfo{FromRoleID: gs.FromRoleID, ToRoleID: gs.ToRoleID, Resource: gs.Resource}
 		fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 		toRole.GrantsIn = append(toRole.GrantsIn, grant)
 		toRole.GrantedMap[gs.Resource] = true
 	}
-	return cleansed
+
+	if cleansed {
+		if err := a.save(); err != nil {
+			return fmt.Errorf("auther: persist cleansed state: %w", err)
+		}
+	}
+	return nil
 }
 
 // save 将当前角色树以 BFS 遍历序列化为快照并全量写入适配器。
