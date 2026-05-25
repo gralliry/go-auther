@@ -19,10 +19,11 @@ package main
 import (
     "fmt"
     "github.com/gralliry/go-auther"
+    memoryadapter "github.com/gralliry/go-auther/adapters/memory"
 )
 
 func main() {
-    a, _ := auther.NewAuthorizer(nil)
+    a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
 
     // Build hierarchy: root -> admin -> editor
     _ = a.CreateRole("root", "admin")
@@ -162,7 +163,7 @@ adapter, _ := sqladapter.NewSQLAdapter(db, "myapp_", "auther_policy")
 a, _ := auther.NewAuthorizer(adapter)
 ```
 
-**No adapter:** pass `nil` for in-memory-only.
+Requires a non-nil adapter. Use `memoryadapter.NewMemoryAdapter()` for in-memory-only mode.
 
 ### Custom adapter
 
@@ -217,6 +218,7 @@ All sentinel errors work with `errors.Is`:
 
 | Error | Meaning |
 |---|---|
+| `ErrAdapterRequired` | Adapter is nil |
 | `ErrUserNotFound` | User does not exist |
 | `ErrDuplicateUser` | User already exists |
 | `ErrRoleNotFound` | Role does not exist |

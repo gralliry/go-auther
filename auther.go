@@ -47,10 +47,10 @@ type Authorizer struct {
 // NewAuthorizer 使用给定的适配器创建 Authorizer。
 // 如果适配器中已存储数据，则会加载恢复；否则自动创建一个
 // ID 为 "root" 且拥有 "/**" 资源的根角色。
-// adapter 为 nil 时使用默认内存适配器。
+// adapter 不能为 nil。
 func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 	if adapter == nil {
-		adapter = newDefaultAdapter()
+		return nil, ErrAdapterRequired
 	}
 	a := &Authorizer{
 		adapter: adapter,
@@ -329,27 +329,3 @@ func (a *Authorizer) checkCycle() error {
 	return nil
 }
 
-// defaultAdapter is an in-memory adapter used when no adapter is provided.
-type defaultAdapter struct {
-	snap *snapshot.Policy
-}
-
-func newDefaultAdapter() Adapter { return &defaultAdapter{} }
-
-func (d *defaultAdapter) Load() (*snapshot.Policy, error) {
-	if d.snap == nil {
-		return nil, nil
-	}
-	c := *d.snap
-	return &c, nil
-}
-func (d *defaultAdapter) Save(s *snapshot.Policy) error {
-	d.snap = s
-	return nil
-}
-func (d *defaultAdapter) SetRole(role snapshot.Role) error       { return nil }
-func (d *defaultAdapter) UnsetRole(role snapshot.Role) error     { return nil }
-func (d *defaultAdapter) SetUser(user snapshot.User) error       { return nil }
-func (d *defaultAdapter) UnsetUser(user snapshot.User) error     { return nil }
-func (d *defaultAdapter) SetGrant(grant snapshot.Grant) error    { return nil }
-func (d *defaultAdapter) UnsetGrant(grant snapshot.Grant) error  { return nil }

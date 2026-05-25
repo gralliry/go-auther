@@ -4,6 +4,9 @@ import "errors"
 
 // 预定义的哨兵错误，调用方可通过 errors.Is 进行判断。
 var (
+	// ErrAdapterRequired adapter 为 nil。
+	ErrAdapterRequired = errors.New("auther: adapter is required")
+
 	// ErrUserNotFound 用户不存在。
 	ErrUserNotFound = errors.New("auther: user not found")
 
