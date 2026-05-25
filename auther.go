@@ -63,7 +63,7 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 		return nil, fmt.Errorf("auther: load policy: %w", err)
 	}
 	if snap != nil && len(snap.Roles) > 0 {
-		if err := a.buildTree(snap); err != nil {
+		if err := a.load(snap); err != nil {
 			return nil, err
 		}
 		return a, nil
@@ -83,10 +83,10 @@ func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 	return a, nil
 }
 
-// buildTree 从持久化快照重建内存中的角色树。
+// load 从持久化快照重建内存中的角色树。
 // 在加载过程中会自动修复损坏的数据（孤立角色、悬挂用户、无效授权等），
 // 并在确实清理了数据时才将修复后的状态写回适配器。
-func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
+func (a *Authorizer) load(snapshot *snapshot.Policy) error {
 	a.roles = make(map[string]*model.RoleNode)
 	a.users = make(map[string]*model.UserNode)
 
@@ -117,43 +117,75 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool, err error)
 			Users:      make(map[string]*model.UserNode),
 		}
 	}
-	if a.roles["root"] == nil {
+
+	rootID := "root"
+	if a.roles[rootID] == nil {
 		cleansed = true
-		a.roles["root"] = &model.RoleNode{
-			ID:         "root",
+		a.roles[rootID] = &model.RoleNode{
+			ID:         rootID,
 			Children:   make(map[string]*model.RoleNode),
 			GrantedMap: map[string]bool{"/**": true},
 			Users:      make(map[string]*model.UserNode),
 		}
 	}
-	a.root = a.roles["root"]
+	a.root = a.roles[rootID]
 
+	s2p := make(map[string]string)
+	p2s := make(map[string][]string)
 	for _, rs := range roles {
-		if rs.ID == "root" {
+		if rs.ID == rootID {
 			continue
 		}
-		parent := a.roles[rs.ParentID]
-		if parent == nil {
+		parentID := rs.ParentID
+		if a.roles[parentID] == nil {
 			cleansed = true
-			parent = a.root
+			parentID = rootID
 		}
-		role := a.roles[rs.ID]
-		role.Parent = parent
-		parent.Children[rs.ID] = role
+		s2p[rs.ID] = parentID
+		p2s[parentID] = append(p2s[parentID], rs.ID)
 	}
 
-	verified := make(map[string]bool)
-	for _, role := range a.roles {
-		path := make(map[string]bool)
-		for cur := role; cur != nil; cur = cur.Parent {
-			if path[cur.ID] {
-				return false, fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, role.ID)
+	// 检测 s2p 中的循环：向上走超过角色总数则存在环。
+	maxSteps := len(roles)
+	for id := range s2p {
+		cur := id
+		for steps := 0; cur != "" && cur != rootID; steps++ {
+			if steps > maxSteps {
+				return false, fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, id)
 			}
-			if verified[cur.ID] {
-				break
+			cur = s2p[cur]
+		}
+	}
+
+	// BFS 从根计算深度并建立 Children 关系。
+	depth := make(map[string]int)
+	depth[rootID] = 0
+	queue := []string{rootID}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, child := range p2s[cur] {
+			if _, seen := depth[child]; seen {
+				return false, fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, child)
 			}
-			path[cur.ID] = true
-			verified[cur.ID] = true
+			depth[child] = depth[cur] + 1
+			queue = append(queue, child)
+			role := a.roles[child]
+			role.Parent = a.roles[cur]
+			a.roles[cur].Children[child] = role
+		}
+	}
+
+	// 未被 BFS 覆盖的节点 → 挂载到根。
+	for _, rs := range roles {
+		if rs.ID == rootID {
+			continue
+		}
+		if _, ok := depth[rs.ID]; !ok {
+			cleansed = true
+			role := a.roles[rs.ID]
+			role.Parent = a.root
+			a.root.Children[rs.ID] = role
 		}
 	}
 
@@ -295,4 +327,3 @@ func (a *Authorizer) isAncestor(ancestorID, descendantID string) bool {
 	}
 	return false
 }
-
