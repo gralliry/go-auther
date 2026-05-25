@@ -90,9 +90,8 @@ func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
 	a.roles = make(map[string]*model.RoleNode)
 	a.users = make(map[string]*model.UserNode)
 
-	cleansed := a.loadRoles(snapshot.Roles)
-
-	if err := a.checkCycle(); err != nil {
+	cleansed, err := a.loadRoles(snapshot.Roles)
+	if err != nil {
 		return err
 	}
 
@@ -108,8 +107,8 @@ func (a *Authorizer) buildTree(snapshot *snapshot.Policy) error {
 	return nil
 }
 
-// loadRoles 创建所有角色节点并建立父子链接，返回是否发生过数据清洗。
-func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool) {
+// loadRoles 创建角色节点、建立父子链接并检测循环引用，返回清洗标志和错误。
+func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool, err error) {
 	for _, rs := range roles {
 		a.roles[rs.ID] = &model.RoleNode{
 			ID:         rs.ID,
@@ -119,7 +118,6 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool) {
 		}
 	}
 
-	// 确定根角色：首个 ParentID 为空的角色。
 	var rootID string
 	for _, rs := range roles {
 		if rs.ParentID == "" {
@@ -141,7 +139,6 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool) {
 	}
 	a.root = a.roles[rootID]
 
-	// 建立父子链接。无效父角色 → 挂载到根。
 	for _, rs := range roles {
 		if rs.ID == rootID {
 			continue
@@ -158,7 +155,23 @@ func (a *Authorizer) loadRoles(roles []snapshot.Role) (cleansed bool) {
 		role.Parent = parent
 		parent.Children[rs.ID] = role
 	}
-	return cleansed
+
+	verified := make(map[string]bool)
+	for _, role := range a.roles {
+		path := make(map[string]bool)
+		for cur := role; cur != nil; cur = cur.Parent {
+			if path[cur.ID] {
+				return false, fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, role.ID)
+			}
+			if verified[cur.ID] {
+				break
+			}
+			path[cur.ID] = true
+			verified[cur.ID] = true
+		}
+	}
+
+	return cleansed, nil
 }
 
 // loadUsers 加载用户快照。所属角色不存在 → 丢弃。
@@ -302,21 +315,3 @@ func (a *Authorizer) isAncestor(ancestorID, descendantID string) bool {
 	return false
 }
 
-// checkCycle 检测角色树中是否存在循环引用，O(n) 时间 O(n) 空间。
-func (a *Authorizer) checkCycle() error {
-	verified := make(map[string]bool)
-	for _, role := range a.roles {
-		path := make(map[string]bool)
-		for cur := role; cur != nil; cur = cur.Parent {
-			if path[cur.ID] {
-				return fmt.Errorf("%w: detected at role %s", ErrCircularRoleHierarchy, role.ID)
-			}
-			if verified[cur.ID] {
-				break
-			}
-			path[cur.ID] = true
-			verified[cur.ID] = true
-		}
-	}
-	return nil
-}
