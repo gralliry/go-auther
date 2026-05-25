@@ -1,33 +1,5 @@
-# Binaries
+.superpowers/
+docs/
+examples/
 *.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-
-# Test coverage
-*.coverprofile
-coverage.txt
-coverage.html
-
-# Output of file adapter tests
-adapters/file/test_*.json
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# Go workspace
-go.work
-go.work.sum
+*.tmp
