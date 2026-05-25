@@ -213,7 +213,9 @@ func (a *Authorizer) save() error {
 			if !seen[key] {
 				seen[key] = true
 				snap.Grants = append(snap.Grants, snapshot.Grant{
-					FromRoleID: g.FromRoleID, ToRoleID: g.ToRoleID, Resource: g.Resource,
+					FromRoleID: g.FromRoleID,
+					ToRoleID:   g.ToRoleID,
+					Resource:   g.Resource,
 				})
 			}
 		}

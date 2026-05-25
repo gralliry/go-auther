@@ -25,7 +25,6 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	if _, exists := a.roles[roleID]; exists {
 		return fmt.Errorf("%w: %s", ErrDuplicateRole, roleID)
 	}
-
 	parent := a.roles[parentID]
 	if parent == nil {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, parentID)
@@ -45,8 +44,7 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 }
 
 // DeleteRole 删除指定角色，级联删除其所有子角色及关联用户。
-// 涉及已删除角色的授权记录会从幸存角色中清理。
-// 根角色不可删除。
+// 涉及已删除角色的授权记录会从幸存角色中清理。根角色不可删除。
 func (a *Authorizer) DeleteRole(roleID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -54,7 +52,6 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	if roleID == "root" {
 		return ErrRootRoleDelete
 	}
-
 	target := a.roles[roleID]
 	if target == nil {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
@@ -62,9 +59,9 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 
 	// 收集待删除的子树。
 	subtree := a.subtree(roleID)
-	subtreeSet := make(map[string]bool, len(subtree))
+	excluded := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
-		subtreeSet[r.ID] = true
+		excluded[r.ID] = true
 	}
 
 	// 移除子树中所有用户。
@@ -74,8 +71,8 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		}
 	}
 
-	// 清理幸存角色中与已删除角色相关的授权记录。
-	a.cleanGrantsExcluding(subtreeSet)
+	// 清理幸存角色中与已删除角色相关的授权记录并重建 GrantedMap。
+	a.cleanGrantsExcluding(excluded)
 
 	// 解除父角色引用后删除子树中的所有角色。
 	if target.Parent != nil {
@@ -88,8 +85,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	return a.save()
 }
 
-// cleanGrantsExcluding 从幸存角色中移除所有关联角色在排除集中的授权记录，
-// 并重建幸存角色的 GrantedMap 和匹配缓存。
+// cleanGrantsExcluding 从幸存角色中移除关联已删除角色的授权记录，并重建 GrantedMap。
 func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 	for _, r := range a.roles {
 		if excluded[r.ID] {
@@ -97,16 +93,9 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 		}
 		r.GrantsIn = filterByFrom(r.GrantsIn, excluded)
 		r.GrantsOut = filterByTo(r.GrantsOut, excluded)
-	}
-	for _, r := range a.roles {
-		if excluded[r.ID] {
-			continue
-		}
 		r.GrantedMap = make(map[string]bool)
 		for _, g := range r.GrantsIn {
-			if !excluded[g.FromRoleID] {
-				r.GrantedMap[g.Resource] = true
-			}
+			r.GrantedMap[g.Resource] = true
 		}
 		r.ResetMatchCache()
 	}
@@ -185,12 +174,11 @@ func (a *Authorizer) GetResource(roleID string) ([]string, error) {
 func roleToInfo(role *model.RoleNode) *RoleInfo {
 	info := &RoleInfo{
 		ID:         role.ID,
-		ParentID:   "",
 		Resources:  make([]string, 0, len(role.GrantsIn)),
 		SubRoleIDs: make([]string, 0, len(role.Children)),
 		UserIDs:    make([]string, 0, len(role.Users)),
-		GrantsIn:   nil,
-		GrantsOut:  nil,
+		GrantsIn:   append([]*model.GrantInfo(nil), role.GrantsIn...),
+		GrantsOut:  append([]*model.GrantInfo(nil), role.GrantsOut...),
 	}
 	if role.Parent != nil {
 		info.ParentID = role.Parent.ID
@@ -198,8 +186,6 @@ func roleToInfo(role *model.RoleNode) *RoleInfo {
 	for r := range role.GrantedMap {
 		info.Resources = append(info.Resources, r)
 	}
-	info.GrantsIn = append([]*model.GrantInfo(nil), role.GrantsIn...)
-	info.GrantsOut = append([]*model.GrantInfo(nil), role.GrantsOut...)
 	for childID := range role.Children {
 		info.SubRoleIDs = append(info.SubRoleIDs, childID)
 	}
