@@ -37,3 +37,21 @@ func (r *RoleNode) SetMatchCache(key string, val bool) {
 func (r *RoleNode) ResetMatchCache() {
 	r.matchCache = nil
 }
+
+// RoleGrant 表示从祖先角色到子角色的显式资源授权记录。
+type RoleGrant struct {
+	FromRoleID string
+	ToRoleID   string
+	Resource   string
+}
+
+// RoleInfo 是对外暴露的角色信息视图。
+type RoleInfo struct {
+	ID         string
+	ParentID   string
+	Resources  []string
+	SubRoleIDs []string
+	UserIDs    []string
+	GrantsIn   []RoleGrant
+	GrantsOut  []RoleGrant
+}
