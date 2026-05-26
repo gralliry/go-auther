@@ -3,4 +3,3 @@ docs/
 examples/
 *.exe
 *.tmp
-*_test.go

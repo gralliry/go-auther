@@ -100,7 +100,6 @@ func (a *Authorizer) GetUsers() []*UserInfo
 
 ```go
 func (a *Authorizer) Enforce(userID, resource string) (bool, error)
-func (a *Authorizer) Permissions(userID string) ([]string, error)
 ```
 
 ## Resource patterns

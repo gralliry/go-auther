@@ -32,12 +32,13 @@ func (p *Policy) Clone() *Policy {
 	if p == nil {
 		return nil
 	}
-	c := &Policy{}
-	c.Roles = make([]Role, len(p.Roles))
+	c := &Policy{
+		Roles:  make([]Role, 0, len(p.Roles)),
+		Users:  make([]User, 0, len(p.Users)),
+		Grants: make([]Grant, 0, len(p.Grants)),
+	}
 	copy(c.Roles, p.Roles)
-	c.Users = make([]User, len(p.Users))
 	copy(c.Users, p.Users)
-	c.Grants = make([]Grant, len(p.Grants))
 	copy(c.Grants, p.Grants)
 	return c
 }

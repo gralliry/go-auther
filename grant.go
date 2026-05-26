@@ -124,22 +124,3 @@ func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantNode, error) {
 	}
 	return append([]*model.GrantNode(nil), role.GrantsOut...), nil
 }
-
-// GetAllGrants 返回系统中所有唯一的授权记录。
-func (a *Authorizer) GetAllGrants() []*model.GrantNode {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	var result []*model.GrantNode
-	seen := make(map[string]bool)
-	a.walkRoles(func(role *model.RoleNode) {
-		for _, g := range role.GrantsOut {
-			key := model.GrantKey(g.FromRoleID, g.ToRoleID, g.Resource)
-			if !seen[key] {
-				seen[key] = true
-				result = append(result, g)
-			}
-		}
-	})
-	return result
-}

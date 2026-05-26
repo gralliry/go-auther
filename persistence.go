@@ -158,7 +158,11 @@ func (a *Authorizer) save() error {
 		return fmt.Errorf("auther: root role not found")
 	}
 
-	a.walkRoles(func(role *model.RoleNode) {
+	queue := []*model.RoleNode{root}
+	for len(queue) > 0 {
+		role := queue[0]
+		queue = queue[1:]
+
 		rs := snapshot.Role{ID: role.ID}
 		if role.Parent != nil {
 			rs.ParentID = role.Parent.ID
@@ -179,23 +183,9 @@ func (a *Authorizer) save() error {
 				})
 			}
 		}
-	})
-	return a.adapter.Save(snap)
-}
-
-// walkRoles 从根角色开始 BFS 遍历角色树，对每个角色执行给定的回调。
-func (a *Authorizer) walkRoles(fn func(*model.RoleNode)) {
-	root := a.roles["root"]
-	if root == nil {
-		return
-	}
-	queue := []*model.RoleNode{root}
-	for len(queue) > 0 {
-		role := queue[0]
-		queue = queue[1:]
-		fn(role)
 		for _, child := range role.Children {
 			queue = append(queue, child)
 		}
 	}
+	return a.adapter.Save(snap)
 }

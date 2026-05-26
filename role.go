@@ -62,21 +62,6 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	}
 
 	// 清理幸存角色中与已删除角色相关的授权记录并重建 GrantedMap。
-	a.cleanGrantsExcluding(excluded)
-
-	// 解除父角色引用后删除子树中的所有角色。
-	if target.Parent != nil {
-		delete(target.Parent.Children, roleID)
-	}
-	for _, r := range subtree {
-		delete(a.roles, r.ID)
-	}
-
-	return a.save()
-}
-
-// cleanGrantsExcluding 从幸存角色中移除关联已删除角色的授权记录，并重建 GrantedMap。
-func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 	for _, r := range a.roles {
 		if excluded[r.ID] {
 			continue
@@ -89,6 +74,16 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 		}
 		r.ResetMatchCache()
 	}
+
+	// 解除父角色引用后删除子树中的所有角色。
+	if target.Parent != nil {
+		delete(target.Parent.Children, roleID)
+	}
+	for _, r := range subtree {
+		delete(a.roles, r.ID)
+	}
+
+	return a.save()
 }
 
 // GetRole 返回指定角色的详细信息。
@@ -109,9 +104,19 @@ func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
 	defer a.mu.RUnlock()
 
 	var result []*model.RoleInfo
-	a.walkRoles(func(role *model.RoleNode) {
+	root := a.roles["root"]
+	if root == nil {
+		return nil
+	}
+	queue := []*model.RoleNode{root}
+	for len(queue) > 0 {
+		role := queue[0]
+		queue = queue[1:]
 		result = append(result, role.ToInfo())
-	})
+		for _, child := range role.Children {
+			queue = append(queue, child)
+		}
+	}
 	return result
 }
 
