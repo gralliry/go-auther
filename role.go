@@ -7,7 +7,7 @@ import (
 	"github.com/gralliry/go-auther/snapshot"
 )
 
-// CreateRole 在指定父角色下创建一个新的子角色。
+// CreateRole creates a new child role under the specified parent role.
 func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -33,8 +33,9 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	return a.adapter.SetRole(snapshot.Role{ID: roleID, ParentID: parentID})
 }
 
-// DeleteRole 删除指定角色，级联删除其所有子角色及关联用户。
-// 涉及已删除角色的授权记录会从幸存角色中清理。根角色不可删除。
+// DeleteRole deletes a role, cascading to all sub-roles and their users.
+// Grants involving deleted roles are cleaned up from surviving roles.
+// The root role cannot be deleted.
 func (a *Authorizer) DeleteRole(roleID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -47,21 +48,21 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	// 收集待删除的子树。
+	// Collect the entire subtree to delete.
 	subtree := target.Subtree()
 	excluded := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
 		excluded[r.ID] = true
 	}
 
-	// 移除子树中所有用户。
+	// Remove all users in the subtree.
 	for _, r := range subtree {
 		for userID := range r.Users {
 			delete(a.users, userID)
 		}
 	}
 
-	// 清理幸存角色中与已删除角色相关的授权记录并重建 GrantedMap。
+	// Clean up grants and rebuild GrantedMap for surviving roles.
 	for _, r := range a.roles {
 		if excluded[r.ID] {
 			continue
@@ -75,7 +76,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		r.ResetMatchCache()
 	}
 
-	// 解除父角色引用后删除子树中的所有角色。
+	// Detach from parent and remove all roles in the subtree.
 	if target.Parent != nil {
 		delete(target.Parent.Children, roleID)
 	}
@@ -86,7 +87,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	return a.save()
 }
 
-// GetRole 返回指定角色的详细信息。
+// GetRole returns detailed information for the specified role.
 func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -98,7 +99,7 @@ func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
 	return role.ToInfo(), nil
 }
 
-// GetAllRoles 返回系统中所有角色的信息列表。
+// GetAllRoles returns information for all roles in the system, in BFS order.
 func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -120,7 +121,7 @@ func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
 	return result
 }
 
-// GetSubRoles 返回指定角色的直接子角色列表。
+// GetSubRoles returns the direct child roles of the specified role.
 func (a *Authorizer) GetSubRoles(roleID string) ([]*model.RoleInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -137,7 +138,7 @@ func (a *Authorizer) GetSubRoles(roleID string) ([]*model.RoleInfo, error) {
 	return result, nil
 }
 
-// GetResource 返回角色当前生效的所有资源权限模式。
+// GetResource returns the effective resource patterns currently granted to the role.
 func (a *Authorizer) GetResource(roleID string) ([]string, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

@@ -1,6 +1,6 @@
 package model
 
-// UserNode 表示权限系统中的一个用户。
+// UserNode represents a user in the authorization system.
 type UserNode struct {
 	ID   string
 	Role *RoleNode

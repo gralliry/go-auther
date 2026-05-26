@@ -8,7 +8,8 @@ import (
 	"github.com/gralliry/go-auther/snapshot"
 )
 
-// Load 从适配器加载数据并重建角色树，自动修复损坏数据后写回。
+// Load loads policy data from the adapter, rebuilds the role tree, and
+// automatically repairs corrupted data before writing back.
 func (a *Authorizer) Load() error {
 	snap, err := a.adapter.Load()
 	if err != nil {
@@ -44,6 +45,7 @@ func (a *Authorizer) Load() error {
 	return nil
 }
 
+// loadRoles populates the roles map from the snapshot, creating empty RoleNodes.
 func (a *Authorizer) loadRoles(snap *snapshot.Policy) {
 	for _, rs := range snap.Roles {
 		a.roles[rs.ID] = &model.RoleNode{
@@ -55,6 +57,7 @@ func (a *Authorizer) loadRoles(snap *snapshot.Policy) {
 	}
 }
 
+// ensureRoot creates a root role if it is missing from the loaded data.
 func (a *Authorizer) ensureRoot() (repaired bool) {
 	if a.roles["root"] != nil {
 		return false
@@ -68,6 +71,8 @@ func (a *Authorizer) ensureRoot() (repaired bool) {
 	return true
 }
 
+// linkRoleHierarchy attaches each role to its parent. Orphaned roles are
+// reattached to root.
 func (a *Authorizer) linkRoleHierarchy(snap *snapshot.Policy) (repaired bool) {
 	root := a.roles["root"]
 	for _, rs := range snap.Roles {
@@ -86,6 +91,7 @@ func (a *Authorizer) linkRoleHierarchy(snap *snapshot.Policy) (repaired bool) {
 	return repaired
 }
 
+// verifyNoCycles checks that every role's ancestor chain is cycle-free.
 func (a *Authorizer) verifyNoCycles() error {
 	verified := make(map[string]bool)
 	for _, role := range a.roles {
@@ -104,6 +110,7 @@ func (a *Authorizer) verifyNoCycles() error {
 	return nil
 }
 
+// loadUsers attaches users to their roles. Orphaned users are dropped.
 func (a *Authorizer) loadUsers(snap *snapshot.Policy) (repaired bool) {
 	for _, us := range snap.Users {
 		role := a.roles[us.RoleID]
@@ -118,6 +125,7 @@ func (a *Authorizer) loadUsers(snap *snapshot.Policy) (repaired bool) {
 	return repaired
 }
 
+// loadGrants attaches grants between roles. Invalid or duplicate grants are dropped.
 func (a *Authorizer) loadGrants(snap *snapshot.Policy) (repaired bool) {
 	grantSeen := make(map[string]bool)
 	for _, gs := range snap.Grants {
@@ -149,7 +157,7 @@ func (a *Authorizer) loadGrants(snap *snapshot.Policy) (repaired bool) {
 	return repaired
 }
 
-// save 将当前角色树序列化为快照并全量写入适配器。
+// save serializes the current role tree to a snapshot and writes it via the adapter.
 func (a *Authorizer) save() error {
 	snap := &snapshot.Policy{}
 	seen := make(map[string]bool)

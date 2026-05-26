@@ -7,14 +7,15 @@ import (
 	"github.com/gralliry/go-auther/snapshot"
 )
 
-// UserInfo 是对外暴露的用户信息视图。
+// UserInfo is the public view of a user entity.
 type UserInfo struct {
 	ID     string
 	RoleID string
 }
 
-// CreateUser 在指定角色下创建一个新用户。
-// 用户是被动叶子节点 —— 继承所属角色的权限，但不能管理资源或创建其他用户/角色。
+// CreateUser creates a new user under the specified role.
+// Users are passive leaf nodes — they inherit their role's effective
+// permissions but cannot manage resources or create other users/roles.
 func (a *Authorizer) CreateUser(roleID, userID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -39,7 +40,8 @@ func (a *Authorizer) CreateUser(roleID, userID string) error {
 	return a.adapter.SetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
-// DeleteUser 从指定角色中删除用户。roleID 必须与用户所属角色匹配。
+// DeleteUser removes a user from the specified role.
+// roleID must match the user's current role.
 func (a *Authorizer) DeleteUser(roleID, userID string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -64,7 +66,7 @@ func (a *Authorizer) DeleteUser(roleID, userID string) error {
 	return a.adapter.UnsetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
-// GetUser 返回指定用户的详细信息。
+// GetUser returns information for the specified user.
 func (a *Authorizer) GetUser(userID string) (*UserInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -84,7 +86,7 @@ func (a *Authorizer) GetUser(userID string) (*UserInfo, error) {
 	}, nil
 }
 
-// GetUsers 返回系统中所有用户的列表。
+// GetUsers returns all users in the system.
 func (a *Authorizer) GetUsers() []*UserInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

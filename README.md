@@ -191,41 +191,49 @@ On load, corrupted data is repaired: orphan roles reattached to root, dangling u
 
 ## Performance
 
-Enforcement hot path (i7-12700H):
+All measurements on i7-12700H, 5-run avg, **0 B/op, 0 allocs/op**.
 
-| Scenario | Time |
+### Glob matching
+
+| Case | Time/op |
 |---|---|
-| Exact match (GrantedMap O(1)) | ~53 ns |
-| Wildcard match | ~53 ns |
-| Grant-based hit | ~64 ns |
-| Literal miss | ~56 ns |
+| Exact match | ~4 ns |
+| Literal miss | ~8 ns |
+| Single wildcard `*` | ~44 ns |
+| Double wildcard `**` | ~73 ns |
+| Deep path `**` | ~102 ns |
 
-Glob matching:
+### Enforcement (full path: role lookup + resource matching)
 
-| Case | Time |
+| Scenario | Time/op |
 |---|---|
-| Exact match | ~2 ns |
-| Literal miss | ~6 ns |
-| Single wildcard `*` | ~48 ns |
-| Double wildcard `**` deep | ~85 ns |
+| Exact match (GrantedMap O(1)) | ~72 ns |
+| Wildcard match | ~68 ns |
+| Grant-based hit | ~76 ns |
+| Literal miss (fast fail) | ~74 ns |
+| Full miss (all patterns scanned) | ~77 ns |
 
-## Errors
+### Permission modification
 
-All sentinel errors work with `errors.Is`:
-
-| Error | Meaning |
+| Scenario | Time/op |
 |---|---|
-| `ErrAdapterRequired` | Adapter is nil |
-| `ErrUserNotFound` | User does not exist |
-| `ErrDuplicateUser` | User already exists |
-| `ErrRoleNotFound` | Role does not exist |
-| `ErrDuplicateRole` | Role already exists |
-| `ErrGrantNotFound` | Grant (From, To, Resource) not found |
-| `ErrDuplicateGrant` | Grant already exists |
-| `ErrNotAncestor` | Grantor is not an ancestor of grantee |
-| `ErrCircularRoleHierarchy` | Cycle detected in role tree |
-| `ErrInvalidResource` | Resource path invalid |
-| `ErrRootRoleDelete` | Cannot delete root role |
+| Grant (shallow hierarchy) | ~334 ns |
+| Grant to 10-level deep role | ~341 ns |
+| Revoke | ~396 ns |
+| Revoke with cascade (3-level chain) | ~1,235 ns |
+
+### Concurrent read-write contention
+
+Random probability-based distribution via per-goroutine RNG.
+
+| Read/Write ratio | Time/op |
+|---|---|
+| 99% read + 1% write | ~683 ns |
+| 90% read + 10% write | ~1,326 ns |
+| 80% read + 20% write | ~1,553 ns |
+| 70% read + 30% write | ~1,509 ns |
+| 50% read + 50% write | ~1,917 ns |
+| 100% write (pure write-lock contention) | ~2,047 ns |
 
 ## License
 

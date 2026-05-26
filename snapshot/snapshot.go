@@ -27,15 +27,15 @@ type Grant struct {
 	Resource   string `json:"resource"`
 }
 
-// Clone 深拷贝一份 Policy，用于并发安全的快照分离。
+// Clone returns a deep copy of the Policy, safe for concurrent access.
 func (p *Policy) Clone() *Policy {
 	if p == nil {
 		return nil
 	}
 	c := &Policy{
-		Roles:  make([]Role, 0, len(p.Roles)),
-		Users:  make([]User, 0, len(p.Users)),
-		Grants: make([]Grant, 0, len(p.Grants)),
+		Roles:  make([]Role, len(p.Roles)),
+		Users:  make([]User, len(p.Users)),
+		Grants: make([]Grant, len(p.Grants)),
 	}
 	copy(c.Roles, p.Roles)
 	copy(c.Users, p.Users)

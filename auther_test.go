@@ -1741,3 +1741,383 @@ func TestGetSubRolesLeafRole(t *testing.T) {
 		t.Errorf("expected 0 children for leaf role, got %d", len(children))
 	}
 }
+
+func TestEnforceInvalidResource(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateUser("root", "u"))
+
+	_, err := a.Enforce("u", "")
+	if !errors.Is(err, ErrInvalidResource) {
+		t.Errorf("expected ErrInvalidResource for empty path, got %v", err)
+	}
+
+	_, err = a.Enforce("u", "no-slash")
+	if !errors.Is(err, ErrInvalidResource) {
+		t.Errorf("expected ErrInvalidResource for no leading /, got %v", err)
+	}
+}
+
+func TestEnforceNormalizedPath(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+	must(t, a.Grant("root", "r1", "/data/read"))
+
+	// path.Clean normalizes double slashes and trailing slashes
+	ok, err := a.Enforce("u", "/data//read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("double slash should be normalized")
+	}
+
+	ok, err = a.Enforce("u", "/data/read/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("trailing slash should be normalized")
+	}
+
+	ok, err = a.Enforce("u", "/data/./read")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("dot segment should be normalized")
+	}
+}
+
+func TestGrantRevokeMultipleResources(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+
+	must(t, a.Grant("root", "r1", "/a"))
+	must(t, a.Grant("root", "r1", "/b"))
+	must(t, a.Grant("root", "r1", "/c"))
+
+	grants, _ := a.GetGrantsTo("r1")
+	if len(grants) != 3 {
+		t.Fatalf("expected 3 grants, got %d", len(grants))
+	}
+
+	// Revoke one should not affect others
+	must(t, a.Revoke("root", "r1", "/b"))
+
+	grants, _ = a.GetGrantsTo("r1")
+	if len(grants) != 2 {
+		t.Fatalf("expected 2 grants after revoke, got %d", len(grants))
+	}
+
+	ok, _ := a.Enforce("u", "/a")
+	if !ok {
+		t.Error("/a should survive")
+	}
+	ok, _ = a.Enforce("u", "/c")
+	if !ok {
+		t.Error("/c should survive")
+	}
+	ok, _ = a.Enforce("u", "/b")
+	if ok {
+		t.Error("/b should be revoked")
+	}
+}
+
+func TestEnforceGlobZeroSegments(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+
+	must(t, a.Grant("root", "r1", "/api/**"))
+
+	cases := []struct {
+		resource string
+		want     bool
+	}{
+		{"/api", true},          // ** matches zero segments
+		{"/api/", true},         // trailing slash normalized
+		{"/api/users", true},    // ** matches one segment
+		{"/api/a/b/c", true},    // ** matches multiple segments
+		{"/other", false},       // no match
+		{"/apix", false},        // prefix but not match
+	}
+	for _, tc := range cases {
+		ok, err := a.Enforce("u", tc.resource)
+		if err != nil {
+			t.Errorf("Enforce(%q): %v", tc.resource, err)
+			continue
+		}
+		if ok != tc.want {
+			t.Errorf("Enforce(%q) = %v, want %v", tc.resource, ok, tc.want)
+		}
+	}
+}
+
+func TestEnforceStarVsDoubleStar(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+
+	must(t, a.Grant("root", "r1", "/api/*"))
+	must(t, a.Grant("root", "r1", "/api/v2/**"))
+
+	// * matches exactly one segment, ** matches zero or more
+	cases := []struct {
+		resource string
+		want     bool
+	}{
+		{"/api/users", true},      // * match
+		{"/api/users/123", false}, // * does NOT match two segments, and v2/** doesn't match this path
+		{"/api/v2", true},         // ** zero segments
+		{"/api/v2/a", true},       // ** one segment
+		{"/api/v2/a/b", true},     // ** multi segments
+	}
+	for _, tc := range cases {
+		ok, err := a.Enforce("u", tc.resource)
+		if err != nil {
+			t.Errorf("Enforce(%q): %v", tc.resource, err)
+			continue
+		}
+		if ok != tc.want {
+			t.Errorf("Enforce(%q) = %v, want %v", tc.resource, ok, tc.want)
+		}
+	}
+}
+
+func TestGrantBetweenSiblingsRejected(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "role_a"))
+	must(t, a.CreateRole("root", "role_b"))
+
+	// role_a is not an ancestor of role_b (they are siblings)
+	err := a.Grant("role_a", "role_b", "/x")
+	if !errors.Is(err, ErrNotAncestor) {
+		t.Errorf("expected ErrNotAncestor for sibling grant, got %v", err)
+	}
+}
+
+func TestRevokePreservesOtherAncestorGrants(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "parent"))
+	must(t, a.CreateRole("parent", "child"))
+	must(t, a.CreateUser("child", "u"))
+
+	must(t, a.Grant("root", "child", "/x"))
+	must(t, a.Grant("parent", "child", "/y"))
+
+	// Revoke root's grant, parent's grant should survive
+	must(t, a.Revoke("root", "child", "/x"))
+
+	ok, _ := a.Enforce("u", "/x")
+	if ok {
+		t.Error("/x should be gone after revoke")
+	}
+	ok, _ = a.Enforce("u", "/y")
+	if !ok {
+		t.Error("/y should survive (granted by parent, not root)")
+	}
+}
+
+func TestGetGrantsToFromNonExistent(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	_, err := a.GetGrantsTo("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+
+	_, err = a.GetGrantsFrom("nonexistent")
+	if !errors.Is(err, ErrRoleNotFound) {
+		t.Errorf("expected ErrRoleNotFound, got %v", err)
+	}
+}
+
+func TestCreateRoleUnderRootDirectly(t *testing.T) {
+	a := newTestAuthorizer(t)
+
+	// Create a direct child under root
+	must(t, a.CreateRole("root", "direct_child"))
+
+	role, _ := a.GetRole("direct_child")
+	if role.ParentID != "root" {
+		t.Errorf("expected parent root, got %q", role.ParentID)
+	}
+
+	children, _ := a.GetSubRoles("root")
+	found := false
+	for _, c := range children {
+		if c.ID == "direct_child" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("direct_child should be listed in root's children")
+	}
+}
+
+func TestEnforceWithMultipleGrantsOverlapping(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+
+	// Grant overlapping patterns
+	must(t, a.Grant("root", "r1", "/reports/**"))
+	must(t, a.Grant("root", "r1", "/reports/2024/*"))
+
+	ok, _ := a.Enforce("u", "/reports/2024/q1")
+	if !ok {
+		t.Error("should match both patterns")
+	}
+
+	ok, _ = a.Enforce("u", "/reports/2023/q1")
+	if !ok {
+		t.Error("should match /** pattern")
+	}
+}
+
+// =============================================================================
+// Error-injection tests for uncovered error paths
+// =============================================================================
+
+// loadErrAdapter simulates an adapter whose Load() call fails.
+type loadErrAdapter struct{ testAdapter }
+
+func (loadErrAdapter) Load() (*snapshot.Policy, error) {
+	return nil, fmt.Errorf("connection refused")
+}
+
+func TestNewAuthorizerLoadError(t *testing.T) {
+	_, err := NewAuthorizer(&loadErrAdapter{})
+	if err == nil {
+		t.Fatal("expected error from Load, got nil")
+	}
+}
+
+// saveFailAdapter returns nil from Load (no existing data) but fails on Save.
+type saveFailAdapter struct{ testAdapter }
+
+func (saveFailAdapter) Save(*snapshot.Policy) error {
+	return fmt.Errorf("disk full")
+}
+
+func TestNewAuthorizerSaveErrorAfterAutoRoot(t *testing.T) {
+	_, err := NewAuthorizer(&saveFailAdapter{})
+	if err == nil {
+		t.Fatal("expected error from Save during root auto-creation, got nil")
+	}
+}
+
+// TestEnforceUserWithNilRole directly corrupts a user's role pointer to
+// exercise the "user has no role" error path in Enforce.
+func TestEnforceUserWithNilRole(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+
+	// Directly corrupt the user's role (same-package access).
+	a.users["u"].Role = nil
+
+	_, err := a.Enforce("u", "/resource")
+	if err == nil {
+		t.Fatal("expected error for user with nil role, got nil")
+	}
+}
+
+// loadCorruptedSaveFailAdapter returns data that triggers the cleansed-repair
+// path in Load(), then fails on Save so the error propagates.
+type loadCorruptedSaveFailAdapter struct{ testAdapter }
+
+func (loadCorruptedSaveFailAdapter) Load() (*snapshot.Policy, error) {
+	return &snapshot.Policy{
+		Roles: []snapshot.Role{
+			{ID: "orphan", ParentID: "nonexistent"},
+		},
+	}, nil
+}
+
+func (loadCorruptedSaveFailAdapter) Save(*snapshot.Policy) error {
+	return fmt.Errorf("disk full")
+}
+
+func TestLoadCleansedSaveError(t *testing.T) {
+	_, err := NewAuthorizer(&loadCorruptedSaveFailAdapter{})
+	if err == nil {
+		t.Fatal("expected error from cleansed state save, got nil")
+	}
+}
+
+// deleteRoleSaveFailAdapter returns pre-populated data so Load succeeds,
+// but Save fails when DeleteRole tries to persist the change.
+type deleteRoleSaveFailAdapter struct{ testAdapter }
+
+func (deleteRoleSaveFailAdapter) Load() (*snapshot.Policy, error) {
+	return &snapshot.Policy{
+		Roles: []snapshot.Role{
+			{ID: "root"},
+			{ID: "child", ParentID: "root"},
+		},
+	}, nil
+}
+
+func (deleteRoleSaveFailAdapter) Save(*snapshot.Policy) error {
+	return fmt.Errorf("disk full")
+}
+
+func TestDeleteRoleSaveError(t *testing.T) {
+	a, err := NewAuthorizer(&deleteRoleSaveFailAdapter{})
+	if err != nil {
+		t.Fatalf("NewAuthorizer: %v", err)
+	}
+	err = a.DeleteRole("child")
+	if err == nil {
+		t.Fatal("expected error from Save during DeleteRole, got nil")
+	}
+}
+
+// unsetUserFailAdapter succeeds on Load/Save but fails on UnsetUser.
+type unsetUserFailAdapter struct{ testAdapter }
+
+func (unsetUserFailAdapter) UnsetUser(snapshot.User) error {
+	return fmt.Errorf("db connection lost")
+}
+
+func TestDeleteUserUnsetError(t *testing.T) {
+	a := newTestAuthorizer(t)
+	must(t, a.CreateRole("root", "r1"))
+	must(t, a.CreateUser("r1", "u"))
+
+	// Swap adapter to one that fails on UnsetUser.
+	a.adapter = &unsetUserFailAdapter{}
+
+	err := a.DeleteUser("r1", "u")
+	if err == nil {
+		t.Fatal("expected error from UnsetUser during DeleteUser, got nil")
+	}
+}
+
+// TestSaveWithNilRoot directly removes the root role to exercise the
+// "root role not found" error path in save().
+func TestSaveWithNilRoot(t *testing.T) {
+	a := newTestAuthorizer(t)
+	delete(a.roles, "root")
+
+	err := a.save()
+	if err == nil {
+		t.Fatal("expected error for nil root in save(), got nil")
+	}
+}
+
+// TestGetAllRolesNilRoot directly removes the root role to exercise the
+// early-return path in GetAllRoles when root is nil.
+func TestGetAllRolesNilRoot(t *testing.T) {
+	a := newTestAuthorizer(t)
+	delete(a.roles, "root")
+
+	result := a.GetAllRoles()
+	if result != nil {
+		t.Fatal("expected nil result when root is missing, got non-nil")
+	}
+}

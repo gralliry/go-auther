@@ -8,9 +8,9 @@ import (
 	"github.com/gralliry/go-auther/snapshot"
 )
 
-// Grant 将资源从祖先角色授权给后代角色。
+// Grant grants a resource pattern from an ancestor role to a descendant role.
 //
-// 授权方必须是接收方的祖先角色（不允许自授权），否则返回 ErrNotAncestor。
+// The grantor must be an ancestor of the grantee. Self-grant is not allowed.
 func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	res, err := normalizeRes(resource)
 	if err != nil {
@@ -49,7 +49,7 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	return a.adapter.SetGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: string(res)})
 }
 
-// Revoke 撤销一条授权，并级联清理子树中失效的子授权。
+// Revoke revokes a grant and cascades cleanup to invalidated sub-grants.
 func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error {
 	res, err := normalizeRes(resource)
 	if err != nil {
@@ -69,7 +69,8 @@ func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error {
 	return a.revokeDelegatedLocked(fromRole, toRole, res)
 }
 
-// revokeDelegatedLocked 撤销委托授权，并级联清理子树中失效的子授权。
+// revokeDelegatedLocked removes a grant and cascades cleanup to descendant roles
+// whose sub-delegations are no longer covered.
 func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, resource resource.Resource) error {
 	found := false
 	for i, g := range fromRole.GrantsOut {
@@ -94,7 +95,7 @@ func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, res
 	}
 	toRole.ResetMatchCache()
 
-	// 级联清理：子树角色的 GrantedMap 已被更新，若不再覆盖某条转授资源则移除该转授。
+	// Cascade: for each descendant, remove sub-grants whose source is no longer covered.
 	for _, r := range toRole.Subtree() {
 		r.GrantsOut = model.RemoveGrantsAndCleanup(r.GrantsOut, a.roles)
 		r.ResetMatchCache()
@@ -102,7 +103,7 @@ func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, res
 	return a.save()
 }
 
-// GetGrantsTo 返回指定角色接收到的授权记录。
+// GetGrantsTo returns all grants received by the specified role.
 func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantNode, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -114,7 +115,7 @@ func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantNode, error) {
 	return append([]*model.GrantNode(nil), role.GrantsIn...), nil
 }
 
-// GetGrantsFrom 返回指定角色发出的授权记录。
+// GetGrantsFrom returns all grants issued by the specified role.
 func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantNode, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

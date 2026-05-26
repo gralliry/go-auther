@@ -1,8 +1,12 @@
 package model
 
-import "github.com/gralliry/go-auther/internal/resource"
+import (
+	"sync"
 
-// RoleNode 表示角色树中的一个角色节点。
+	"github.com/gralliry/go-auther/internal/resource"
+)
+
+// RoleNode represents a node in the role tree.
 type RoleNode struct {
 	ID       string
 	Parent   *RoleNode
@@ -13,12 +17,10 @@ type RoleNode struct {
 	GrantsIn   []*GrantNode
 	GrantsOut  []*GrantNode
 
-	matchCache map[string]bool
+	matchCache sync.Map
 }
 
-const maxMatchCacheSize = 64
-
-// HasAncestor 判断给定角色ID是否为当前角色的祖先。
+// HasAncestor reports whether the given role ID is an ancestor of this role.
 func (r *RoleNode) HasAncestor(ancestorID string) bool {
 	for p := r; p != nil; p = p.Parent {
 		if p.ID == ancestorID {
@@ -28,7 +30,7 @@ func (r *RoleNode) HasAncestor(ancestorID string) bool {
 	return false
 }
 
-// HasResource 检查 GrantedMap 中是否有模式能匹配目标资源。
+// HasResource checks whether any pattern in GrantedMap matches the target resource.
 func (r *RoleNode) HasResource(target string) bool {
 	if r == nil {
 		return false
@@ -49,7 +51,7 @@ func (r *RoleNode) HasResource(target string) bool {
 	return false
 }
 
-// Resources 返回 GrantedMap 中所有资源模式。
+// Resources returns all resource patterns in GrantedMap.
 func (r *RoleNode) Resources() []string {
 	if r == nil {
 		return nil
@@ -61,38 +63,35 @@ func (r *RoleNode) Resources() []string {
 	return result
 }
 
-// GetMatchCache 从匹配缓存中查找已缓存的结果。
+// GetMatchCache retrieves a cached match result for the given target.
 func (r *RoleNode) GetMatchCache(key string) (bool, bool) {
 	if r == nil {
 		return false, false
 	}
-	v, ok := r.matchCache[key]
-	return v, ok
+	v, ok := r.matchCache.Load(key)
+	if !ok {
+		return false, false
+	}
+	return v.(bool), true
 }
 
-// SetMatchCache 将匹配结果存入缓存。超过容量时清空全部后重新填充。
+// SetMatchCache stores a match result in the cache.
 func (r *RoleNode) SetMatchCache(key string, val bool) {
 	if r == nil {
 		return
 	}
-	if r.matchCache == nil {
-		r.matchCache = make(map[string]bool)
-	}
-	if len(r.matchCache) >= maxMatchCacheSize {
-		r.matchCache = make(map[string]bool)
-	}
-	r.matchCache[key] = val
+	r.matchCache.Store(key, val)
 }
 
-// ResetMatchCache 清空匹配缓存，在写操作后调用。
+// ResetMatchCache clears the match cache. Called after write operations.
 func (r *RoleNode) ResetMatchCache() {
 	if r == nil {
 		return
 	}
-	r.matchCache = nil
+	r.matchCache = sync.Map{}
 }
 
-// RoleInfo 是对外暴露的角色信息视图。
+// RoleInfo is the public view of a role, returned by the Authorizer API.
 type RoleInfo struct {
 	ID         string
 	ParentID   string
@@ -103,7 +102,7 @@ type RoleInfo struct {
 	GrantsOut  []*GrantNode
 }
 
-// Subtree 收集当前角色及其所有后代角色，使用 BFS 遍历。
+// Subtree collects this role and all its descendants using BFS.
 func (r *RoleNode) Subtree() []*RoleNode {
 	if r == nil {
 		return nil
@@ -121,7 +120,7 @@ func (r *RoleNode) Subtree() []*RoleNode {
 	return result
 }
 
-// ToInfo 将 RoleNode 转换为对外的 RoleInfo 结构。
+// ToInfo converts a RoleNode to the public RoleInfo struct.
 func (r *RoleNode) ToInfo() *RoleInfo {
 	if r == nil {
 		return nil

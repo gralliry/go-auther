@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// Enforce 检查用户是否有权限访问指定资源。
+// Enforce checks whether a user is authorized to access the given resource.
 func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 	normalized, err := normalizeRes(res)
 	if err != nil {

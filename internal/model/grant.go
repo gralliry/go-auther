@@ -2,14 +2,14 @@ package model
 
 import "github.com/gralliry/go-auther/internal/resource"
 
-// GrantNode 表示从祖先角色到子角色的显式资源授权记录。
+// GrantNode represents an explicit resource grant from an ancestor role to a descendant.
 type GrantNode struct {
 	FromRoleID string
 	ToRoleID   string
 	Resource   resource.Resource
 }
 
-// FilterByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
+// FilterByFrom filters out grants whose FromRoleID is in the excluded set.
 func FilterByFrom(grants []*GrantNode, excluded map[string]bool) []*GrantNode {
 	out := grants[:0]
 	for _, g := range grants {
@@ -21,7 +21,7 @@ func FilterByFrom(grants []*GrantNode, excluded map[string]bool) []*GrantNode {
 	return out
 }
 
-// FilterByTo 过滤掉 ToRoleID 在排除集合中的授权记录。
+// FilterByTo filters out grants whose ToRoleID is in the excluded set.
 func FilterByTo(grants []*GrantNode, excluded map[string]bool) []*GrantNode {
 	out := grants[:0]
 	for _, g := range grants {
@@ -33,7 +33,7 @@ func FilterByTo(grants []*GrantNode, excluded map[string]bool) []*GrantNode {
 	return out
 }
 
-// HasGrant 检查授权列表中是否存在指定资源的授权。
+// HasGrant reports whether any grant in the slice matches the given resource.
 func HasGrant(grants []*GrantNode, resource resource.Resource) bool {
 	for _, g := range grants {
 		if g.Resource == resource {
@@ -43,12 +43,12 @@ func HasGrant(grants []*GrantNode, resource resource.Resource) bool {
 	return false
 }
 
-// GrantKey 构建授权的唯一标识键，用于去重。
+// GrantKey builds a unique dedup key for a grant.
 func GrantKey(fromRoleID, toRoleID string, resource resource.Resource) string {
 	return fromRoleID + "|" + toRoleID + "|" + string(resource)
 }
 
-// DelGrant 从授权列表中移除指定来源和资源的授权记录。
+// DelGrant removes a grant matching the given source role and resource from the slice.
 func DelGrant(grants []*GrantNode, fromRoleID string, resource resource.Resource) []*GrantNode {
 	for i, g := range grants {
 		if g.FromRoleID == fromRoleID && g.Resource == resource {
@@ -58,7 +58,8 @@ func DelGrant(grants []*GrantNode, fromRoleID string, resource resource.Resource
 	return grants
 }
 
-// RemoveGrantsAndCleanup 移除已失去覆盖的转授记录，并清理受让角色的 GrantedMap 和缓存。
+// RemoveGrantsAndCleanup removes sub-grants whose source role no longer covers the resource,
+// and cleans up the grantee's GrantedMap and cache.
 func RemoveGrantsAndCleanup(grants []*GrantNode, roles map[string]*RoleNode) []*GrantNode {
 	out := grants[:0]
 	for _, g := range grants {

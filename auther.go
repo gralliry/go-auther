@@ -1,27 +1,32 @@
-// Package auther 提供基于角色树的权限管理库。
+// Package auther provides a role-tree authorization library for Go.
 //
-// 核心概念
+// Core concepts
 //
-// Auther 管理三个核心实体：
+// Auther manages three core entities:
 //
-//   - 角色（Role）：形成树形层级结构。根角色在初始化时自动创建，
-//     并默认拥有 "/**" 资源权限。角色可以创建子角色和用户。
-//     权限不会自动继承 —— 父角色必须显式调用 Grant 向子角色授权。
+//   - Role: forms a tree hierarchy. The root role is created automatically
+//     on initialization and is granted "/**" by default. Roles can create
+//     child roles and users. Permissions are explicit-only — a parent role
+//     must call Grant to delegate resources to its descendants.
 //
-//   - 用户（User）：由角色创建的被动叶子节点。用户继承其所属角色的
-//     有效权限，但不能管理资源或创建其他用户/角色。
+//   - User: a passive leaf node created under a role. Users inherit their
+//     role's effective permissions but cannot manage resources or create
+//     other users/roles.
 //
-//   - 资源（Resource）：路径风格的字符串（例如 /user/create、/data/**）。
-//     支持 glob 匹配：* 匹配单个路径段，** 匹配零个或多个路径段。
+//   - Resource: a path-style string such as "/user/create" or "/data/**".
+//     Glob matching is supported: * matches a single path segment, **
+//     matches zero or more segments.
 //
-// 持久化
+// Persistence
 //
-// 适配器（Adapter）提供持久化能力。每次数据变更立即写透到适配器中。
-// 构造 Authorizer 时，如果适配器中存在已持久化的数据，会自动加载恢复状态。
+// An Adapter provides persistence. Every mutation is written through to
+// the adapter immediately. On construction, if the adapter holds persisted
+// data, it is loaded and restored automatically.
 //
-// 并发安全
+// Concurrency safety
 //
-// Authorizer 的所有公开方法均受 sync.RWMutex 保护，可安全并发使用。
+// All public methods of Authorizer are protected by sync.RWMutex and are
+// safe for concurrent use.
 package auther
 
 import (
@@ -30,7 +35,8 @@ import (
 	"github.com/gralliry/go-auther/internal/model"
 )
 
-// Authorizer 是权限系统的主入口，管理角色树、用户映射和资源授权。
+// Authorizer is the main entry point of the authorization system.
+// It manages the role tree, user mappings, and resource grants.
 type Authorizer struct {
 	mu      sync.RWMutex
 	roles   map[string]*model.RoleNode
@@ -38,10 +44,10 @@ type Authorizer struct {
 	adapter Adapter
 }
 
-// NewAuthorizer 使用给定的适配器创建 Authorizer。
-// 如果适配器中已存储数据，则会加载恢复；否则自动创建一个
-// ID 为 "root" 且拥有 "/**" 资源的根角色。
-// adapter 不能为 nil。
+// NewAuthorizer creates an Authorizer backed by the given adapter.
+// If the adapter contains persisted data, it is loaded and restored.
+// Otherwise a root role with ID "root" and resource "/**" is created automatically.
+// adapter must not be nil.
 func NewAuthorizer(adapter Adapter) (*Authorizer, error) {
 	if adapter == nil {
 		return nil, ErrAdapterRequired

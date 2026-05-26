@@ -259,3 +259,117 @@ func BenchmarkMatchLongDoubleStar(b *testing.B) {
 		benchResult = r.Match("/api/v1/users/admin/permissions/read/write")
 	}
 }
+
+func TestMatchStarAtStart(t *testing.T) {
+	tests := []struct {
+		pattern string
+		target  string
+		want    bool
+	}{
+		{"*", "anything", true},
+		{"*", "a/b", false},
+		{"*/b", "a/b", true},
+		{"*/b", "a/c", false},
+		{"*/b/c", "a/b/c", true},
+		{"*/b/c", "x/b/d", false},
+	}
+	for _, tt := range tests {
+		got := Resource(tt.pattern).Match(tt.target)
+		if got != tt.want {
+			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestMatchComplexMixedGlobs(t *testing.T) {
+	tests := []struct {
+		pattern string
+		target  string
+		want    bool
+	}{
+		{"/a/*/b/**/c", "/a/x/b/c", true},
+		{"/a/*/b/**/c", "/a/x/b/y/c", true},
+		{"/a/*/b/**/c", "/a/x/b/y/z/c", true},
+		{"/a/*/b/**/c", "/a/b/c", false},     // * needs exactly one segment
+		{"/a/*/b/**/c", "/a/x/y/b/c", false}, // extra segment before b
+		{"/a/**/b/*/c", "/a/x/b/y/c", true},
+		{"/a/**/b/*/c", "/a/b/y/c", true},
+		{"/a/**/b/*/c", "/a/x/y/b/z/c", true},
+		{"/a/**/b/*/c", "/a/b/c", false}, // * needs exactly one segment
+	}
+	for _, tt := range tests {
+		got := Resource(tt.pattern).Match(tt.target)
+		if got != tt.want {
+			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestMatchDoubleStarRecursive(t *testing.T) {
+	tests := []struct {
+		pattern string
+		target  string
+		want    bool
+	}{
+		{"/**/**", "/a", true},
+		{"/**/**", "/a/b/c", true},
+		{"/**/**", "/", true},
+		{"/a/**/**/b", "/a/b", true},
+		{"/a/**/**/b", "/a/x/b", true},
+		{"/a/**/**/b", "/a/x/y/b", true},
+	}
+	for _, tt := range tests {
+		got := Resource(tt.pattern).Match(tt.target)
+		if got != tt.want {
+			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestMatchOnlyDoubleStar(t *testing.T) {
+	tests := []struct {
+		pattern string
+		target  string
+		want    bool
+	}{
+		{"**", "", true},
+		{"**", "/", true},
+		{"**", "a", true},
+		{"**", "a/b/c/d/e", true},
+		{"/**", "/", true},
+		{"/**", "/a", true},
+		{"/**", "/a/b/c", true},
+	}
+	for _, tt := range tests {
+		got := Resource(tt.pattern).Match(tt.target)
+		if got != tt.want {
+			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
+		}
+	}
+}
+
+func TestNewNormalization(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want string
+	}{
+		{"/a/b", "/a/b"},
+		{"/a//b", "/a/b"},
+		{"/a/./b", "/a/b"},
+		{"/a/b/..", "/a"},
+		{"/a/b/../c", "/a/c"},
+		{"/a/b/.", "/a/b"},
+		{"/trailing/", "/trailing"},
+		{"/.", "/"},
+	}
+	for _, tt := range tests {
+		r, err := New(tt.raw)
+		if err != nil {
+			t.Errorf("New(%q): unexpected error %v", tt.raw, err)
+			continue
+		}
+		if r.String() != tt.want {
+			t.Errorf("New(%q) = %q, want %q", tt.raw, r.String(), tt.want)
+		}
+	}
+}
