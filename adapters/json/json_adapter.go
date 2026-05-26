@@ -1,10 +1,10 @@
-// Package jsonadapter provides a JSON file-backed adapter for policy persistence.
+// Package json provides a JSON file-backed adapter for policy persistence.
 //
 // Usage:
 //
-//	adapter := jsonadapter.NewJSONAdapter("policy.json")
+//	adapter := json.New("policy.json")
 //	a, _ := auther.NewAuthorizer(adapter)
-package jsonadapter
+package json
 
 import (
 	"os"
@@ -15,25 +15,25 @@ import (
 	"github.com/gralliry/go-auther/snapshot"
 )
 
-// JSONAdapter is a JSON file-backed adapter for Auther policy persistence.
+// Adapter is a JSON file-backed adapter for Auther policy persistence.
 // Writes are atomic via temp file + rename.
 //
 // Incremental methods maintain an in-memory snapshot and trigger a full
 // file write on each call.
-type JSONAdapter struct {
+type Adapter struct {
 	filePath string
 	mu       sync.Mutex
 	snap     *snapshot.Policy // cached for incremental modifications
 }
 
-// NewJSONAdapter creates a new JSON adapter that persists to the given path.
-func NewJSONAdapter(filePath string) *JSONAdapter {
-	return &JSONAdapter{filePath: filePath}
+// New creates a new JSON adapter that persists to the given path.
+func New(filePath string) *Adapter {
+	return &Adapter{filePath: filePath}
 }
 
 // Load reads the policy snapshot from the JSON file.
 // Returns nil if the file does not exist.
-func (ja *JSONAdapter) Load() (*snapshot.Policy, error) {
+func (ja *Adapter) Load() (*snapshot.Policy, error) {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 
@@ -50,20 +50,20 @@ func (ja *JSONAdapter) Load() (*snapshot.Policy, error) {
 		return nil, err
 	}
 	ja.snap = &snap
-	return copySnap(&snap), nil
+	return snap.Clone(), nil
 }
 
 // Save persists the policy snapshot and updates the cache.
 // Uses atomic write: writes to temp file, then renames.
-func (ja *JSONAdapter) Save(snapshot *snapshot.Policy) error {
+func (ja *Adapter) Save(snapshot *snapshot.Policy) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 
-	ja.snap = copySnap(snapshot)
+	ja.snap = snapshot.Clone()
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) writeLocked() error {
+func (ja *Adapter) writeLocked() error {
 	data, err := json.MarshalIndent(ja.snap, "", "  ")
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func (ja *JSONAdapter) writeLocked() error {
 // Incremental methods modify the cached snapshot and write the full file.
 // The Authorizer calls these after completing the in-memory mutation.
 
-func (ja *JSONAdapter) SetRole(role snapshot.Role) error {
+func (ja *Adapter) SetRole(role snapshot.Role) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -88,7 +88,7 @@ func (ja *JSONAdapter) SetRole(role snapshot.Role) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) UnsetRole(role snapshot.Role) error {
+func (ja *Adapter) UnsetRole(role snapshot.Role) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -103,7 +103,7 @@ func (ja *JSONAdapter) UnsetRole(role snapshot.Role) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) SetUser(user snapshot.User) error {
+func (ja *Adapter) SetUser(user snapshot.User) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -113,7 +113,7 @@ func (ja *JSONAdapter) SetUser(user snapshot.User) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) UnsetUser(user snapshot.User) error {
+func (ja *Adapter) UnsetUser(user snapshot.User) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -128,7 +128,7 @@ func (ja *JSONAdapter) UnsetUser(user snapshot.User) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) SetGrant(grant snapshot.Grant) error {
+func (ja *Adapter) SetGrant(grant snapshot.Grant) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -138,7 +138,7 @@ func (ja *JSONAdapter) SetGrant(grant snapshot.Grant) error {
 	return ja.writeLocked()
 }
 
-func (ja *JSONAdapter) UnsetGrant(grant snapshot.Grant) error {
+func (ja *Adapter) UnsetGrant(grant snapshot.Grant) error {
 	ja.mu.Lock()
 	defer ja.mu.Unlock()
 	if ja.snap == nil {
@@ -151,18 +151,4 @@ func (ja *JSONAdapter) UnsetGrant(grant snapshot.Grant) error {
 		}
 	}
 	return ja.writeLocked()
-}
-
-func copySnap(s *snapshot.Policy) *snapshot.Policy {
-	if s == nil {
-		return nil
-	}
-	c := &snapshot.Policy{}
-	c.Roles = make([]snapshot.Role, len(s.Roles))
-	copy(c.Roles, s.Roles)
-	c.Users = make([]snapshot.User, len(s.Users))
-	copy(c.Users, s.Users)
-	c.Grants = make([]snapshot.Grant, len(s.Grants))
-	copy(c.Grants, s.Grants)
-	return c
 }

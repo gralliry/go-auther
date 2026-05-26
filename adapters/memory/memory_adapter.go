@@ -1,4 +1,4 @@
-package memoryadapter
+package memory
 
 import (
 	"sync"
@@ -6,35 +6,35 @@ import (
 	"github.com/gralliry/go-auther/snapshot"
 )
 
-// MemoryAdapter stores policy data in memory. Implements auther.Adapter.
-type MemoryAdapter struct {
+// Adapter stores policy data in memory. Implements auther.Adapter.
+type Adapter struct {
 	mu       sync.RWMutex
 	snapshot *snapshot.Policy
 }
 
-// NewMemoryAdapter creates a new in-memory adapter.
-func NewMemoryAdapter() *MemoryAdapter {
-	return &MemoryAdapter{}
+// New creates a new in-memory adapter.
+func New() *Adapter {
+	return &Adapter{}
 }
 
-func (a *MemoryAdapter) Load() (*snapshot.Policy, error) {
+func (a *Adapter) Load() (*snapshot.Policy, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	if a.snapshot == nil {
 		return nil, nil
 	}
-	return copySnapshot(a.snapshot), nil
+	return a.snapshot.Clone(), nil
 }
 
-func (a *MemoryAdapter) Save(snapshot *snapshot.Policy) error {
+func (a *Adapter) Save(snapshot *snapshot.Policy) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.snapshot = copySnapshot(snapshot)
+	a.snapshot = snapshot.Clone()
 	return nil
 }
 
-func (a *MemoryAdapter) SetRole(role snapshot.Role) error {
+func (a *Adapter) SetRole(role snapshot.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ensure()
@@ -42,7 +42,7 @@ func (a *MemoryAdapter) SetRole(role snapshot.Role) error {
 	return nil
 }
 
-func (a *MemoryAdapter) UnsetRole(role snapshot.Role) error {
+func (a *Adapter) UnsetRole(role snapshot.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.snapshot == nil {
@@ -57,7 +57,7 @@ func (a *MemoryAdapter) UnsetRole(role snapshot.Role) error {
 	return nil
 }
 
-func (a *MemoryAdapter) SetUser(user snapshot.User) error {
+func (a *Adapter) SetUser(user snapshot.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ensure()
@@ -65,7 +65,7 @@ func (a *MemoryAdapter) SetUser(user snapshot.User) error {
 	return nil
 }
 
-func (a *MemoryAdapter) UnsetUser(user snapshot.User) error {
+func (a *Adapter) UnsetUser(user snapshot.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.snapshot == nil {
@@ -80,7 +80,7 @@ func (a *MemoryAdapter) UnsetUser(user snapshot.User) error {
 	return nil
 }
 
-func (a *MemoryAdapter) SetGrant(grant snapshot.Grant) error {
+func (a *Adapter) SetGrant(grant snapshot.Grant) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.ensure()
@@ -88,7 +88,7 @@ func (a *MemoryAdapter) SetGrant(grant snapshot.Grant) error {
 	return nil
 }
 
-func (a *MemoryAdapter) UnsetGrant(grant snapshot.Grant) error {
+func (a *Adapter) UnsetGrant(grant snapshot.Grant) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.snapshot == nil {
@@ -103,22 +103,8 @@ func (a *MemoryAdapter) UnsetGrant(grant snapshot.Grant) error {
 	return nil
 }
 
-func (a *MemoryAdapter) ensure() {
+func (a *Adapter) ensure() {
 	if a.snapshot == nil {
 		a.snapshot = &snapshot.Policy{}
 	}
-}
-
-func copySnapshot(s *snapshot.Policy) *snapshot.Policy {
-	if s == nil {
-		return nil
-	}
-	c := &snapshot.Policy{}
-	c.Roles = make([]snapshot.Role, len(s.Roles))
-	copy(c.Roles, s.Roles)
-	c.Users = make([]snapshot.User, len(s.Users))
-	copy(c.Users, s.Users)
-	c.Grants = make([]snapshot.Grant, len(s.Grants))
-	copy(c.Grants, s.Grants)
-	return c
 }

@@ -4,18 +4,8 @@ import (
 	"fmt"
 
 	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/snapshot"
 )
-
-// RoleInfo 是对外暴露的角色信息视图。
-type RoleInfo struct {
-	ID         string
-	ParentID   string
-	Resources  []string
-	SubRoleIDs []string
-	UserIDs    []string
-	GrantsIn   []*GrantInfo
-	GrantsOut  []*GrantInfo
-}
 
 // CreateRole 在指定父角色下创建一个新的子角色。
 func (a *Authorizer) CreateRole(parentID, roleID string) error {
@@ -40,7 +30,7 @@ func (a *Authorizer) CreateRole(parentID, roleID string) error {
 	a.roles[roleID] = role
 	parent.Children[roleID] = role
 
-	return a.saveSetRole(roleID, parentID)
+	return a.adapter.SetRole(snapshot.Role{ID: roleID, ParentID: parentID})
 }
 
 // DeleteRole 删除指定角色，级联删除其所有子角色及关联用户。
@@ -58,7 +48,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 	}
 
 	// 收集待删除的子树。
-	subtree := a.subtree(roleID)
+	subtree := target.Subtree()
 	excluded := make(map[string]bool, len(subtree))
 	for _, r := range subtree {
 		excluded[r.ID] = true
@@ -91,8 +81,8 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 		if excluded[r.ID] {
 			continue
 		}
-		r.GrantsIn = filterByFrom(r.GrantsIn, excluded)
-		r.GrantsOut = filterByTo(r.GrantsOut, excluded)
+		r.GrantsIn = model.FilterByFrom(r.GrantsIn, excluded)
+		r.GrantsOut = model.FilterByTo(r.GrantsOut, excluded)
 		r.GrantedMap = make(map[string]bool)
 		for _, g := range r.GrantsIn {
 			r.GrantedMap[g.Resource] = true
@@ -102,7 +92,7 @@ func (a *Authorizer) cleanGrantsExcluding(excluded map[string]bool) {
 }
 
 // GetRole 返回指定角色的详细信息。
-func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error) {
+func (a *Authorizer) GetRole(roleID string) (*model.RoleInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -110,30 +100,23 @@ func (a *Authorizer) GetRole(roleID string) (*RoleInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	return roleToInfo(role), nil
+	return role.ToInfo(), nil
 }
 
 // GetAllRoles 返回系统中所有角色的信息列表。
-func (a *Authorizer) GetAllRoles() []*RoleInfo {
+func (a *Authorizer) GetAllRoles() []*model.RoleInfo {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var result []*RoleInfo
-	var walk func(role *model.RoleNode)
-	walk = func(role *model.RoleNode) {
-		result = append(result, roleToInfo(role))
-		for _, child := range role.Children {
-			walk(child)
-		}
-	}
-	if root := a.roles["root"]; root != nil {
-		walk(root)
-	}
+	var result []*model.RoleInfo
+	a.walkRoles(func(role *model.RoleNode) {
+		result = append(result, role.ToInfo())
+	})
 	return result
 }
 
 // GetSubRoles 返回指定角色的直接子角色列表。
-func (a *Authorizer) GetSubRoles(roleID string) ([]*RoleInfo, error) {
+func (a *Authorizer) GetSubRoles(roleID string) ([]*model.RoleInfo, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -142,9 +125,9 @@ func (a *Authorizer) GetSubRoles(roleID string) ([]*RoleInfo, error) {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	result := make([]*RoleInfo, 0, len(role.Children))
+	result := make([]*model.RoleInfo, 0, len(role.Children))
 	for _, child := range role.Children {
-		result = append(result, roleToInfo(child))
+		result = append(result, child.ToInfo())
 	}
 	return result, nil
 }
@@ -159,62 +142,5 @@ func (a *Authorizer) GetResource(roleID string) ([]string, error) {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
 
-	seen := make(map[string]bool)
-	var result []string
-	for r := range role.GrantedMap {
-		if !seen[r] {
-			seen[r] = true
-			result = append(result, r)
-		}
-	}
-	return result, nil
-}
-
-// roleToInfo 将内部 RoleNode 转换为对外的 RoleInfo 结构。
-func roleToInfo(role *model.RoleNode) *RoleInfo {
-	info := &RoleInfo{
-		ID:         role.ID,
-		Resources:  make([]string, 0, len(role.GrantsIn)),
-		SubRoleIDs: make([]string, 0, len(role.Children)),
-		UserIDs:    make([]string, 0, len(role.Users)),
-		GrantsIn:   append([]*model.GrantInfo(nil), role.GrantsIn...),
-		GrantsOut:  append([]*model.GrantInfo(nil), role.GrantsOut...),
-	}
-	if role.Parent != nil {
-		info.ParentID = role.Parent.ID
-	}
-	for r := range role.GrantedMap {
-		info.Resources = append(info.Resources, r)
-	}
-	for childID := range role.Children {
-		info.SubRoleIDs = append(info.SubRoleIDs, childID)
-	}
-	for userID := range role.Users {
-		info.UserIDs = append(info.UserIDs, userID)
-	}
-	return info
-}
-
-// filterByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
-func filterByFrom(grants []*model.GrantInfo, excluded map[string]bool) []*model.GrantInfo {
-	out := grants[:0]
-	for _, g := range grants {
-		if excluded[g.FromRoleID] {
-			continue
-		}
-		out = append(out, g)
-	}
-	return out
-}
-
-// filterByTo 过滤掉 ToRoleID 在排除集合中的授权记录。
-func filterByTo(grants []*model.GrantInfo, excluded map[string]bool) []*model.GrantInfo {
-	out := grants[:0]
-	for _, g := range grants {
-		if excluded[g.ToRoleID] {
-			continue
-		}
-		out = append(out, g)
-	}
-	return out
+	return role.Resources(), nil
 }

@@ -19,11 +19,11 @@ package main
 import (
     "fmt"
     "github.com/gralliry/go-auther"
-    memoryadapter "github.com/gralliry/go-auther/adapters/memory"
+    memory "github.com/gralliry/go-auther/adapters/memory"
 )
 
 func main() {
-    a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
+    a, _ := auther.NewAuthorizer(memory.New())
 
     // Build hierarchy: root -> admin -> editor
     _ = a.CreateRole("root", "admin")
@@ -80,9 +80,9 @@ func (a *Authorizer) GetResource(roleID string) ([]string, error)
 ```go
 func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error
 func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error
-func (a *Authorizer) GetGrantsTo(roleID string) ([]GrantInfo, error)
-func (a *Authorizer) GetGrantsFrom(roleID string) ([]GrantInfo, error)
-func (a *Authorizer) GetAllGrants() []GrantInfo
+func (a *Authorizer) GetGrantsTo(roleID string) ([]GrantNode, error)
+func (a *Authorizer) GetGrantsFrom(roleID string) ([]GrantNode, error)
+func (a *Authorizer) GetAllGrants() []GrantNode
 ```
 
 `fromRoleID` must be an ancestor of `toRoleID`. Self-grant is not allowed. `Revoke` cascades: all descendant grants for the same resource are removed.
@@ -136,17 +136,17 @@ type Adapter interface {
 **Memory** (testing / dev):
 
 ```go
-import memoryadapter "github.com/gralliry/go-auther/adapters/memory"
+import memory "github.com/gralliry/go-auther/adapters/memory"
 
-a, _ := auther.NewAuthorizer(memoryadapter.NewMemoryAdapter())
+a, _ := auther.NewAuthorizer(memory.New())
 ```
 
 **JSON** (file-backed, atomic writes):
 
 ```go
-import jsonadapter "github.com/gralliry/go-auther/adapters/json"
+import json "github.com/gralliry/go-auther/adapters/json"
 
-a, _ := auther.NewAuthorizer(jsonadapter.NewJSONAdapter("/path/to/policy.json"))
+a, _ := auther.NewAuthorizer(json.New("/path/to/policy.json"))
 ```
 
 **SQL** (MySQL, PostgreSQL, SQLite — any `database/sql` driver):
@@ -155,15 +155,15 @@ a, _ := auther.NewAuthorizer(jsonadapter.NewJSONAdapter("/path/to/policy.json"))
 import (
     "database/sql"
     _ "github.com/go-sql-driver/mysql" // or lib/pq, modernc.org/sqlite, etc.
-    sqladapter "github.com/gralliry/go-auther/adapters/sql"
+    sql "github.com/gralliry/go-auther/adapters/sql"
 )
 
 db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")
-adapter, _ := sqladapter.NewSQLAdapter(db, "myapp_", "auther_policy")
+adapter, _ := sql.New(db, "myapp_", "auther_policy")
 a, _ := auther.NewAuthorizer(adapter)
 ```
 
-Requires a non-nil adapter. Use `memoryadapter.NewMemoryAdapter()` for in-memory-only mode.
+Requires a non-nil adapter. Use `memory.New()` for in-memory-only mode.
 
 ### Custom adapter
 

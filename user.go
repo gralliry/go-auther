@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/snapshot"
 )
 
 // UserInfo 是对外暴露的用户信息视图。
@@ -35,7 +36,7 @@ func (a *Authorizer) CreateUser(roleID, userID string) error {
 	a.users[userID] = user
 	role.Users[userID] = user
 
-	return a.saveSetUser(roleID, userID)
+	return a.adapter.SetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
 // DeleteUser 从指定角色中删除用户。roleID 必须与用户所属角色匹配。
@@ -60,7 +61,7 @@ func (a *Authorizer) DeleteUser(roleID, userID string) error {
 	delete(role.Users, userID)
 	delete(a.users, userID)
 
-	return a.saveUnsetUser(roleID, userID)
+	return a.adapter.UnsetUser(snapshot.User{ID: userID, RoleID: roleID})
 }
 
 // GetUser 返回指定用户的详细信息。

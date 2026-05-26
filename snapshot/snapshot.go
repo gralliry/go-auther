@@ -26,3 +26,18 @@ type Grant struct {
 	ToRoleID   string `json:"to_role_id"`
 	Resource   string `json:"resource"`
 }
+
+// Clone 深拷贝一份 Policy，用于并发安全的快照分离。
+func (p *Policy) Clone() *Policy {
+	if p == nil {
+		return nil
+	}
+	c := &Policy{}
+	c.Roles = make([]Role, len(p.Roles))
+	copy(c.Roles, p.Roles)
+	c.Users = make([]User, len(p.Users))
+	copy(c.Users, p.Users)
+	c.Grants = make([]Grant, len(p.Grants))
+	copy(c.Grants, p.Grants)
+	return c
+}

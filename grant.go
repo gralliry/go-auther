@@ -3,19 +3,9 @@ package auther
 import (
 	"fmt"
 
-	"github.com/gralliry/go-auther/internal/match"
-
 	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/snapshot"
 )
-
-// normalizeRes 调用 match.Clean 并封装错误为 ErrInvalidResource。
-func normalizeRes(raw string) (string, error) {
-	res, err := match.Clean(raw)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidResource, err)
-	}
-	return res, nil
-}
 
 // Grant 将资源从祖先角色授权给后代角色。
 //
@@ -40,7 +30,7 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	if toRole == nil {
 		return fmt.Errorf("%w: %s", ErrRoleNotFound, toRoleID)
 	}
-	if !a.isAncestor(fromRoleID, toRoleID) {
+	if !toRole.HasAncestor(fromRoleID) {
 		return fmt.Errorf("%w: %s is not an ancestor of %s", ErrNotAncestor, fromRoleID, toRoleID)
 	}
 
@@ -50,12 +40,12 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 		}
 	}
 
-	grant := &model.GrantInfo{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: res}
+	grant := &model.GrantNode{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: res}
 	fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
 	toRole.GrantedMap[res] = true
 	toRole.ResetMatchCache()
-	return a.saveSetGrant(fromRoleID, toRoleID, res)
+	return a.adapter.SetGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: res})
 }
 
 // Revoke 撤销一条授权，并级联清理子树中失效的子授权。
@@ -98,81 +88,21 @@ func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, res
 			break
 		}
 	}
-	if !hasGrant(toRole.GrantsIn, resource) {
+	if !model.HasGrant(toRole.GrantsIn, resource) {
 		delete(toRole.GrantedMap, resource)
 	}
 	toRole.ResetMatchCache()
 
 	// 级联清理：子树角色的 GrantedMap 已被更新，若不再覆盖某条转授资源则移除该转授。
-	for _, r := range a.subtree(toRole.ID) {
-		r.GrantsOut = removeGrants(r.GrantsOut, a.roles)
+	for _, r := range toRole.Subtree() {
+		r.GrantsOut = model.RemoveGrantsAndCleanup(r.GrantsOut, a.roles)
 		r.ResetMatchCache()
 	}
 	return a.save()
 }
 
-// removeGrants 移除授权角色已失去权限的转授记录。
-func removeGrants(grants []*model.GrantInfo, roles map[string]*model.RoleNode) []*model.GrantInfo {
-	out := grants[:0]
-	for _, g := range grants {
-		if !hasResourceMatch(roles[g.FromRoleID], g.Resource) {
-			if grantee := roles[g.ToRoleID]; grantee != nil {
-				grantee.GrantsIn = delGrant(grantee.GrantsIn, g.FromRoleID, g.Resource)
-				if !hasGrant(grantee.GrantsIn, g.Resource) {
-					delete(grantee.GrantedMap, g.Resource)
-				}
-				grantee.ResetMatchCache()
-			}
-			continue
-		}
-		out = append(out, g)
-	}
-	return out
-}
-
-// hasResourceMatch 检查角色的 GrantedMap 中是否有模式能匹配目标资源。
-func hasResourceMatch(role *model.RoleNode, target string) bool {
-	if role == nil {
-		return false
-	}
-	if role.GrantedMap[target] {
-		return true
-	}
-	if cached, ok := role.GetMatchCache(target); ok {
-		return cached
-	}
-	for pattern := range role.GrantedMap {
-		if match.Match(pattern, target) {
-			role.SetMatchCache(target, true)
-			return true
-		}
-	}
-	role.SetMatchCache(target, false)
-	return false
-}
-
-// hasGrant 检查授权列表中是否存在指定资源的授权。
-func hasGrant(grants []*model.GrantInfo, resource string) bool {
-	for _, g := range grants {
-		if g.Resource == resource {
-			return true
-		}
-	}
-	return false
-}
-
-// delGrant 从接收方的 GrantsIn 列表中移除指定来源和资源的授权记录。
-func delGrant(grants []*model.GrantInfo, fromRoleID string, resource string) []*model.GrantInfo {
-	for i, g := range grants {
-		if g.FromRoleID == fromRoleID && g.Resource == resource {
-			return append(grants[:i], grants[i+1:]...)
-		}
-	}
-	return grants
-}
-
 // GetGrantsTo 返回指定角色接收到的授权记录。
-func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantInfo, error) {
+func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantNode, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -180,11 +110,11 @@ func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	return append([]*model.GrantInfo(nil), role.GrantsIn...), nil
+	return append([]*model.GrantNode(nil), role.GrantsIn...), nil
 }
 
 // GetGrantsFrom 返回指定角色发出的授权记录。
-func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantInfo, error) {
+func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantNode, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -192,31 +122,24 @@ func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantInfo, error) {
 	if role == nil {
 		return nil, fmt.Errorf("%w: %s", ErrRoleNotFound, roleID)
 	}
-	return append([]*model.GrantInfo(nil), role.GrantsOut...), nil
+	return append([]*model.GrantNode(nil), role.GrantsOut...), nil
 }
 
 // GetAllGrants 返回系统中所有唯一的授权记录。
-func (a *Authorizer) GetAllGrants() []*model.GrantInfo {
+func (a *Authorizer) GetAllGrants() []*model.GrantNode {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	var result []*model.GrantInfo
+	var result []*model.GrantNode
 	seen := make(map[string]bool)
-	var walk func(role *model.RoleNode)
-	walk = func(role *model.RoleNode) {
+	a.walkRoles(func(role *model.RoleNode) {
 		for _, g := range role.GrantsOut {
-			key := g.FromRoleID + "|" + g.ToRoleID + "|" + g.Resource
+			key := model.GrantKey(g.FromRoleID, g.ToRoleID, g.Resource)
 			if !seen[key] {
 				seen[key] = true
 				result = append(result, g)
 			}
 		}
-		for _, child := range role.Children {
-			walk(child)
-		}
-	}
-	if root := a.roles["root"]; root != nil {
-		walk(root)
-	}
+	})
 	return result
 }
