@@ -70,7 +70,7 @@ func (a *Authorizer) DeleteRole(roleID string) error {
 		r.GrantsOut = model.FilterByTo(r.GrantsOut, excluded)
 		r.GrantedMap = make(map[string]bool)
 		for _, g := range r.GrantsIn {
-			r.GrantedMap[g.Resource] = true
+			r.GrantedMap[string(g.Resource)] = true
 		}
 		r.ResetMatchCache()
 	}

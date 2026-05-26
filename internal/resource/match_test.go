@@ -1,4 +1,4 @@
-package match
+package resource
 
 import "testing"
 
@@ -39,7 +39,7 @@ func TestMatchExact(t *testing.T) {
 		{"/data/**/export", "/data/reports/2024/export", true},
 	}
 	for _, tt := range tests {
-		got := Match(tt.pattern, tt.target)
+		got := Resource(tt.pattern).Match(tt.target)
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -47,7 +47,7 @@ func TestMatchExact(t *testing.T) {
 }
 
 func TestMatchRootOnly(t *testing.T) {
-	if !Match("/**", "/foo") {
+	if !Resource("/**").Match("/foo") {
 		t.Error("/** should match any non-root path")
 	}
 }
@@ -63,7 +63,7 @@ func TestMatchEdgeCases(t *testing.T) {
 		{"/", "/", true},
 	}
 	for _, tt := range tests {
-		got := Match(tt.pattern, tt.target)
+		got := Resource(tt.pattern).Match(tt.target)
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -71,10 +71,10 @@ func TestMatchEdgeCases(t *testing.T) {
 }
 
 func TestMatchDoubleStarAlone(t *testing.T) {
-	if !Match("**", "foo") {
+	if !Resource("**").Match("foo") {
 		t.Error("** should match single segment")
 	}
-	if !Match("**", "foo/bar") {
+	if !Resource("**").Match("foo/bar") {
 		t.Error("** should match multiple segments")
 	}
 }
@@ -95,9 +95,9 @@ func TestHasWildcard(t *testing.T) {
 		{"no wildcards here", false},
 	}
 	for _, tt := range tests {
-		got := HasWildcard(tt.s)
+		got := Resource(tt.s).hasWildcard()
 		if got != tt.want {
-			t.Errorf("HasWildcard(%q) = %v, want %v", tt.s, got, tt.want)
+			t.Errorf("hasWildcard(%q) = %v, want %v", tt.s, got, tt.want)
 		}
 	}
 }
@@ -120,7 +120,7 @@ func TestMatchMultipleDoubleStars(t *testing.T) {
 		{"/a/**/x/**/z", "/a/x/z", true},
 	}
 	for _, tt := range tests {
-		got := Match(tt.pattern, tt.target)
+		got := Resource(tt.pattern).Match(tt.target)
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -154,7 +154,7 @@ func TestMatchDoubleStarAtEdges(t *testing.T) {
 		{"**", "a/b/c", true},
 	}
 	for _, tt := range tests {
-		got := Match(tt.pattern, tt.target)
+		got := Resource(tt.pattern).Match(tt.target)
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -179,14 +179,14 @@ func TestMatchBacktrackEdgeCases(t *testing.T) {
 		{"/api/**/v2/**/data", "/api/v1/data", false},
 	}
 	for _, tt := range tests {
-		got := Match(tt.pattern, tt.target)
+		got := Resource(tt.pattern).Match(tt.target)
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
 	}
 }
 
-func TestClean(t *testing.T) {
+func TestNew(t *testing.T) {
 	tests := []struct {
 		raw     string
 		want    string
@@ -201,19 +201,19 @@ func TestClean(t *testing.T) {
 		{"no-slash", "", true},
 	}
 	for _, tt := range tests {
-		got, err := Clean(tt.raw)
+		got, err := New(tt.raw)
 		if tt.wantErr {
 			if err == nil {
-				t.Errorf("Clean(%q) should error", tt.raw)
+				t.Errorf("New(%q) should error", tt.raw)
 			}
 			continue
 		}
 		if err != nil {
-			t.Errorf("Clean(%q): %v", tt.raw, err)
+			t.Errorf("New(%q): %v", tt.raw, err)
 			continue
 		}
-		if got != tt.want {
-			t.Errorf("Clean(%q) = %q, want %q", tt.raw, got, tt.want)
+		if got.String() != tt.want {
+			t.Errorf("New(%q) = %q, want %q", tt.raw, got, tt.want)
 		}
 	}
 }
@@ -221,31 +221,41 @@ func TestClean(t *testing.T) {
 var benchResult bool
 
 func BenchmarkMatchExact(b *testing.B) {
+	r := Resource("/user/create")
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchResult = Match("/user/create", "/user/create")
+		benchResult = r.Match("/user/create")
 	}
 }
 
 func BenchmarkMatchSingleStar(b *testing.B) {
+	r := Resource("/user/*/edit")
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchResult = Match("/user/*/edit", "/user/alice/edit")
+		benchResult = r.Match("/user/alice/edit")
 	}
 }
 
 func BenchmarkMatchDoubleStar(b *testing.B) {
+	r := Resource("/a/**/z")
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchResult = Match("/a/**/z", "/a/b/c/d/e/z")
+		benchResult = r.Match("/a/b/c/d/e/z")
 	}
 }
 
 func BenchmarkMatchNoMatch(b *testing.B) {
+	r := Resource("/user/create")
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchResult = Match("/user/create", "/user/delete")
+		benchResult = r.Match("/user/delete")
 	}
 }
 
 func BenchmarkMatchLongDoubleStar(b *testing.B) {
+	r := Resource("/api/v1/**")
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchResult = Match("/api/v1/**", "/api/v1/users/admin/permissions/read/write")
+		benchResult = r.Match("/api/v1/users/admin/permissions/read/write")
 	}
 }

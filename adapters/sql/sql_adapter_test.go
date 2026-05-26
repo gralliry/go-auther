@@ -1,23 +1,17 @@
 package sql
 
 import (
-	"database/sql"
-	"os"
 	"testing"
 
 	"github.com/gralliry/go-auther"
-
-	_ "modernc.org/sqlite"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestSQLAdapterRoundTrip(t *testing.T) {
 	db := openSQLite(t)
-	defer db.Close()
 
-	adapter, err := New(db, "", "auther_policy")
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	adapter := New(db)
 
 	a1, err := auther.NewAuthorizer(adapter)
 	if err != nil {
@@ -61,12 +55,8 @@ func TestSQLAdapterRoundTrip(t *testing.T) {
 
 func TestSQLAdapterEmptyDB(t *testing.T) {
 	db := openSQLite(t)
-	defer db.Close()
 
-	adapter, err := New(db, "", "policy")
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	adapter := New(db)
 
 	a, err := auther.NewAuthorizer(adapter)
 	if err != nil {
@@ -82,58 +72,18 @@ func TestSQLAdapterEmptyDB(t *testing.T) {
 	}
 }
 
-func TestSQLAdapterTablePrefix(t *testing.T) {
-	db := openSQLite(t)
-	defer db.Close()
-
-	adapter, err := New(db, "pre_", "mytable")
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-
-	a1, err := auther.NewAuthorizer(adapter)
-	if err != nil {
-		t.Fatalf("NewAuthorizer: %v", err)
-	}
-	must(t, a1.CreateUser("root", "u"))
-
-	a2, err := auther.NewAuthorizer(adapter)
-	if err != nil {
-		t.Fatalf("NewAuthorizer reload: %v", err)
-	}
-	_, err = a2.GetUser("u")
-	if err != nil {
-		t.Errorf("user should survive round-trip with prefix, got: %v", err)
-	}
-}
-
-func TestSQLAdapterInvalidTableName(t *testing.T) {
-	db := openSQLite(t)
-	defer db.Close()
-
-	bad := []string{"", "drop table", "1bad", "x; drop table"}
-	for _, name := range bad {
-		_, err := New(db, "", name)
-		if err == nil {
-			t.Errorf("expected error for table name %q", name)
-		}
-	}
-}
-
-func openSQLite(t *testing.T) *sql.DB {
+func openSQLite(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	tmpFile := "test_sql_adapter.db"
-	t.Cleanup(func() {
-		os.Remove(tmpFile)
-		os.Remove(tmpFile + "-wal")
-		os.Remove(tmpFile + "-shm")
-	})
-
-	db, err := sql.Open("sqlite", tmpFile)
+	db, err := gorm.Open(sqlite.Open(t.TempDir()+"/test.db"), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
+		t.Fatalf("gorm.Open: %v", err)
 	}
+	t.Cleanup(func() {
+		if sqldb, err := db.DB(); err == nil {
+			sqldb.Close()
+		}
+	})
 	return db
 }
 

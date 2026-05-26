@@ -30,12 +30,6 @@ import (
 	"github.com/gralliry/go-auther/internal/model"
 )
 
-// GrantNode 通过别名暴露给外部使用。
-type GrantNode = model.GrantNode
-
-// RoleInfo 通过别名暴露给外部使用。
-type RoleInfo = model.RoleInfo
-
 // Authorizer 是权限系统的主入口，管理角色树、用户映射和资源授权。
 type Authorizer struct {
 	mu      sync.RWMutex

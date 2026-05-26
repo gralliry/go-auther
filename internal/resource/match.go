@@ -1,38 +1,11 @@
-package match
-
-import (
-	"fmt"
-	"path"
-)
+package resource
 
 const noStar = -1
 
-// Clean 校验并规范化一个资源路径字符串。
-func Clean(raw string) (string, error) {
-	if raw == "" {
-		return "", fmt.Errorf("resource must not be empty")
-	}
-	if raw[0] != '/' {
-		return "", fmt.Errorf("resource must start with '/'")
-	}
-	return path.Clean(raw), nil
-}
-
-// Match 判断 target 是否匹配 pattern glob 模式，零堆分配。
-func Match(pattern, target string) bool {
-	if pattern == target {
-		return true
-	}
-	if !HasWildcard(pattern) {
-		return false
-	}
-	return matchGlob(pattern, target)
-}
-
-// HasWildcard 判断字符串是否包含 '*' 通配符。
-func HasWildcard(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == '*' {
+// hasWildcard 判断模式是否包含 '*' 通配符。
+func (r Resource) hasWildcard() bool {
+	for i := 0; i < len(r); i++ {
+		if r[i] == '*' {
 			return true
 		}
 	}
@@ -40,7 +13,7 @@ func HasWildcard(s string) bool {
 }
 
 // matchGlob 分段迭代匹配。* 匹配单段，** 匹配零或多段。
-func matchGlob(p, t string) bool {
+func (r Resource) matchGlob(p, t string) bool {
 	pi, ti := 0, 0
 	starPi, starTi := noStar, noStar
 

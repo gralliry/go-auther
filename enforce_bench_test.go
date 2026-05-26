@@ -3,38 +3,38 @@ package auther
 import (
 	"testing"
 
-	"github.com/gralliry/go-auther/internal/match"
+	"github.com/gralliry/go-auther/internal/resource"
 )
 
 var benchMatchResult bool
 
 func BenchmarkMatchExact(b *testing.B) {
 	for b.Loop() {
-		benchMatchResult = match.Match("/user/create", "/user/create")
+		benchMatchResult = resource.Resource("/user/create").Match("/user/create")
 	}
 }
 
 func BenchmarkMatchNoMatchLiteral(b *testing.B) {
 	for b.Loop() {
-		benchMatchResult = match.Match("/user/create", "/user/delete")
+		benchMatchResult = resource.Resource("/user/create").Match("/user/delete")
 	}
 }
 
 func BenchmarkMatchStar(b *testing.B) {
 	for b.Loop() {
-		benchMatchResult = match.Match("/user/*/edit", "/user/123/edit")
+		benchMatchResult = resource.Resource("/user/*/edit").Match("/user/123/edit")
 	}
 }
 
 func BenchmarkMatchDoubleStar(b *testing.B) {
 	for b.Loop() {
-		benchMatchResult = match.Match("/a/**/z", "/a/b/c/d/e/z")
+		benchMatchResult = resource.Resource("/a/**/z").Match("/a/b/c/d/e/z")
 	}
 }
 
 func BenchmarkMatchDoubleStarMany(b *testing.B) {
 	for b.Loop() {
-		benchMatchResult = match.Match("/api/**/export", "/api/v1/users/admin/reports/2024/export")
+		benchMatchResult = resource.Resource("/api/**/export").Match("/api/v1/users/admin/reports/2024/export")
 	}
 }
 
@@ -44,7 +44,7 @@ func BenchmarkMatchDoubleStarMany(b *testing.B) {
 
 func benchAuthorizer(b *testing.B) *Authorizer {
 	b.Helper()
-	a, _ := NewAuthorizer(nil)
+	a, _ := NewAuthorizer(&testAdapter{})
 	_ = a.CreateRole("root", "admin")
 	_ = a.CreateRole("admin", "editor")
 	_ = a.Grant("root", "admin", "/user/*")

@@ -80,9 +80,8 @@ func (a *Authorizer) GetResource(roleID string) ([]string, error)
 ```go
 func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error
 func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error
-func (a *Authorizer) GetGrantsTo(roleID string) ([]GrantNode, error)
-func (a *Authorizer) GetGrantsFrom(roleID string) ([]GrantNode, error)
-func (a *Authorizer) GetAllGrants() []GrantNode
+func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantNode, error)
+func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantNode, error)
 ```
 
 `fromRoleID` must be an ancestor of `toRoleID`. Self-grant is not allowed. `Revoke` cascades: all descendant grants for the same resource are removed.
@@ -148,18 +147,17 @@ import json "github.com/gralliry/go-auther/adapters/json"
 a, _ := auther.NewAuthorizer(json.New("/path/to/policy.json"))
 ```
 
-**SQL** (MySQL, PostgreSQL, SQLite — any `database/sql` driver):
+**SQL** (MySQL, PostgreSQL, SQLite — any GORM-supported driver):
 
 ```go
 import (
-    "database/sql"
-    _ "github.com/go-sql-driver/mysql" // or lib/pq, modernc.org/sqlite, etc.
-    sql "github.com/gralliry/go-auther/adapters/sql"
+    "gorm.io/driver/sqlite"
+    "gorm.io/gorm"
+    sqladapter "github.com/gralliry/go-auther/adapters/sql"
 )
 
-db, _ := sql.Open("mysql", "user:pass@tcp(127.0.0.1:3306)/dbname")
-adapter, _ := sql.New(db, "myapp_", "auther_policy")
-a, _ := auther.NewAuthorizer(adapter)
+db, _ := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+a, _ := auther.NewAuthorizer(sqladapter.New(db))
 ```
 
 Requires a non-nil adapter. Use `memory.New()` for in-memory-only mode.
@@ -197,19 +195,19 @@ Enforcement hot path (i7-12700H):
 
 | Scenario | Time |
 |---|---|
-| Exact match (GrantedMap O(1)) | ~38 ns |
-| Wildcard match | ~40 ns |
-| Grant-based hit | ~44 ns |
-| Literal miss | ~39 ns |
+| Exact match (GrantedMap O(1)) | ~53 ns |
+| Wildcard match | ~53 ns |
+| Grant-based hit | ~64 ns |
+| Literal miss | ~56 ns |
 
 Glob matching:
 
 | Case | Time |
 |---|---|
 | Exact match | ~2 ns |
-| Literal miss | ~5 ns |
-| Single wildcard `*` | ~38 ns |
-| Double wildcard `**` deep | ~66 ns |
+| Literal miss | ~6 ns |
+| Single wildcard `*` | ~48 ns |
+| Double wildcard `**` deep | ~85 ns |
 
 ## Errors
 

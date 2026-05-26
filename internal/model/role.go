@@ -1,6 +1,6 @@
 package model
 
-import "github.com/gralliry/go-auther/internal/match"
+import "github.com/gralliry/go-auther/internal/resource"
 
 // RoleNode 表示角色树中的一个角色节点。
 type RoleNode struct {
@@ -40,7 +40,7 @@ func (r *RoleNode) HasResource(target string) bool {
 		return cached
 	}
 	for pattern := range r.GrantedMap {
-		if match.Match(pattern, target) {
+		if resource.Resource(pattern).Match(target) {
 			r.SetMatchCache(target, true)
 			return true
 		}

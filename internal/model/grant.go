@@ -1,10 +1,12 @@
 package model
 
+import "github.com/gralliry/go-auther/internal/resource"
+
 // GrantNode 表示从祖先角色到子角色的显式资源授权记录。
 type GrantNode struct {
 	FromRoleID string
 	ToRoleID   string
-	Resource   string
+	Resource   resource.Resource
 }
 
 // FilterByFrom 过滤掉 FromRoleID 在排除集合中的授权记录。
@@ -32,7 +34,7 @@ func FilterByTo(grants []*GrantNode, excluded map[string]bool) []*GrantNode {
 }
 
 // HasGrant 检查授权列表中是否存在指定资源的授权。
-func HasGrant(grants []*GrantNode, resource string) bool {
+func HasGrant(grants []*GrantNode, resource resource.Resource) bool {
 	for _, g := range grants {
 		if g.Resource == resource {
 			return true
@@ -42,12 +44,12 @@ func HasGrant(grants []*GrantNode, resource string) bool {
 }
 
 // GrantKey 构建授权的唯一标识键，用于去重。
-func GrantKey(fromRoleID, toRoleID, resource string) string {
-	return fromRoleID + "|" + toRoleID + "|" + resource
+func GrantKey(fromRoleID, toRoleID string, resource resource.Resource) string {
+	return fromRoleID + "|" + toRoleID + "|" + string(resource)
 }
 
 // DelGrant 从授权列表中移除指定来源和资源的授权记录。
-func DelGrant(grants []*GrantNode, fromRoleID string, resource string) []*GrantNode {
+func DelGrant(grants []*GrantNode, fromRoleID string, resource resource.Resource) []*GrantNode {
 	for i, g := range grants {
 		if g.FromRoleID == fromRoleID && g.Resource == resource {
 			return append(grants[:i], grants[i+1:]...)
@@ -61,11 +63,11 @@ func RemoveGrantsAndCleanup(grants []*GrantNode, roles map[string]*RoleNode) []*
 	out := grants[:0]
 	for _, g := range grants {
 		from := roles[g.FromRoleID]
-		if from == nil || !from.HasResource(g.Resource) {
+		if from == nil || !from.HasResource(string(g.Resource)) {
 			if grantee := roles[g.ToRoleID]; grantee != nil {
 				grantee.GrantsIn = DelGrant(grantee.GrantsIn, g.FromRoleID, g.Resource)
 				if !HasGrant(grantee.GrantsIn, g.Resource) {
-					delete(grantee.GrantedMap, g.Resource)
+					delete(grantee.GrantedMap, string(g.Resource))
 				}
 				grantee.ResetMatchCache()
 			}

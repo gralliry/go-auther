@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/internal/resource"
 	"github.com/gralliry/go-auther/snapshot"
 )
 
@@ -43,9 +44,9 @@ func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error {
 	grant := &model.GrantNode{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: res}
 	fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 	toRole.GrantsIn = append(toRole.GrantsIn, grant)
-	toRole.GrantedMap[res] = true
+	toRole.GrantedMap[string(res)] = true
 	toRole.ResetMatchCache()
-	return a.adapter.SetGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: res})
+	return a.adapter.SetGrant(snapshot.Grant{FromRoleID: fromRoleID, ToRoleID: toRoleID, Resource: string(res)})
 }
 
 // Revoke 撤销一条授权，并级联清理子树中失效的子授权。
@@ -69,7 +70,7 @@ func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error {
 }
 
 // revokeDelegatedLocked 撤销委托授权，并级联清理子树中失效的子授权。
-func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, resource string) error {
+func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, resource resource.Resource) error {
 	found := false
 	for i, g := range fromRole.GrantsOut {
 		if g.ToRoleID == toRole.ID && g.Resource == resource {
@@ -89,7 +90,7 @@ func (a *Authorizer) revokeDelegatedLocked(fromRole, toRole *model.RoleNode, res
 		}
 	}
 	if !model.HasGrant(toRole.GrantsIn, resource) {
-		delete(toRole.GrantedMap, resource)
+		delete(toRole.GrantedMap, string(resource))
 	}
 	toRole.ResetMatchCache()
 

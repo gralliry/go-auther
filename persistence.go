@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/internal/resource"
 	"github.com/gralliry/go-auther/snapshot"
 )
 
@@ -134,13 +135,13 @@ func (a *Authorizer) loadGrants(snap *snapshot.Policy) (repaired bool) {
 			repaired = true
 			continue
 		}
-		key := model.GrantKey(gs.FromRoleID, gs.ToRoleID, gs.Resource)
+		key := model.GrantKey(gs.FromRoleID, gs.ToRoleID, resource.Resource(gs.Resource))
 		if grantSeen[key] {
 			repaired = true
 			continue
 		}
 		grantSeen[key] = true
-		grant := &model.GrantNode{FromRoleID: gs.FromRoleID, ToRoleID: gs.ToRoleID, Resource: gs.Resource}
+		grant := &model.GrantNode{FromRoleID: gs.FromRoleID, ToRoleID: gs.ToRoleID, Resource: resource.Resource(gs.Resource)}
 		fromRole.GrantsOut = append(fromRole.GrantsOut, grant)
 		toRole.GrantsIn = append(toRole.GrantsIn, grant)
 		toRole.GrantedMap[gs.Resource] = true
@@ -179,7 +180,7 @@ func (a *Authorizer) save() error {
 				snap.Grants = append(snap.Grants, snapshot.Grant{
 					FromRoleID: g.FromRoleID,
 					ToRoleID:   g.ToRoleID,
-					Resource:   g.Resource,
+					Resource:   string(g.Resource),
 				})
 			}
 		}

@@ -23,5 +23,5 @@ func (a *Authorizer) Enforce(userID, res string) (bool, error) {
 	}
 
 	role := user.Role
-	return role.HasResource(normalized), nil
+	return role.HasResource(string(normalized)), nil
 }
