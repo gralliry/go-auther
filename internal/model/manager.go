@@ -6,7 +6,7 @@ import (
 
 	"github.com/gammazero/deque"
 	"github.com/gralliry/go-auther/adapter/memory"
-	"github.com/gralliry/go-auther/internal/pkg/iset"
+	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
 type Option func(*Config)
@@ -27,9 +27,9 @@ func WithFixed(fixed bool) Option {
 type Manager struct {
 	root *Role
 
-	namespace iset.Set[string]
-	roles     iset.ValueSet[string, *Role]
-	users     iset.ValueSet[string, *User]
+	namespace set.Set[string]
+	roles     set.ValueSet[string, *Role]
+	users     set.ValueSet[string, *User]
 
 	mtx     sync.RWMutex
 	adapter Adapter

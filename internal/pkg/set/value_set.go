@@ -1,4 +1,4 @@
-package iset
+package set
 
 import (
 	"iter"

@@ -1,4 +1,4 @@
-package iset
+package set
 
 type Set[K comparable] map[K]struct{}
 

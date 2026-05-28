@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 
-	"github.com/gralliry/go-auther/internal/pkg/iset"
+	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
 var (
@@ -22,19 +22,19 @@ type Role struct {
 	// Valid() verify this field is not nil
 	// IsRoot() verify this field is self
 	parent   *Role
-	children *iset.CacheSet[*Role]
+	children *set.CacheSet[*Role]
 
-	srcGrants *iset.CacheSet[*Policy]
-	tarGrants *iset.CacheSet[*Policy]
+	srcGrants *set.CacheSet[*Policy]
+	tarGrants *set.CacheSet[*Policy]
 }
 
 func rawRole(id string) *Role {
 	return &Role{
 		id:        id,
 		parent:    nil,
-		children:  iset.NewCacheSet[*Role](true),
-		srcGrants: iset.NewCacheSet[*Policy](false),
-		tarGrants: iset.NewCacheSet[*Policy](true),
+		children:  set.NewCacheSet[*Role](true),
+		srcGrants: set.NewCacheSet[*Policy](false),
+		tarGrants: set.NewCacheSet[*Policy](true),
 	}
 }
 

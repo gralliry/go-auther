@@ -3,7 +3,7 @@ package model
 import (
 	"errors"
 
-	"github.com/gralliry/go-auther/internal/pkg/iset"
+	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
 var (
@@ -17,7 +17,7 @@ type User struct {
 	// immutable field
 	id string
 	// Valid() verify this field is not nil
-	roles *iset.CacheSet[*Role]
+	roles *set.CacheSet[*Role]
 }
 
 func (u *User) ID() string {
