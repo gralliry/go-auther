@@ -1,19 +1,9 @@
-package resource
+package match
 
 const noStar = -1
 
-// hasWildcard 判断模式是否包含 '*' 通配符。
-func (r Resource) hasWildcard() bool {
-	for i := 0; i < len(r); i++ {
-		if r[i] == '*' {
-			return true
-		}
-	}
-	return false
-}
-
-// matchGlob 分段迭代匹配。* 匹配单段，** 匹配零或多段。
-func (r Resource) matchGlob(p, t string) bool {
+// MatchGlob 分段迭代匹配。* 匹配单段，** 匹配零或多段。
+func MatchGlob(p, t string) bool {
 	pi, ti := 0, 0
 	starPi, starTi := noStar, noStar
 
@@ -98,4 +88,14 @@ func tailGlobStar(p string, pi int) bool {
 		return false
 	}
 	return true
+}
+
+// HasWildcard 判断模式是否包含 '*' 通配符。
+func HasWildcard(p string) bool {
+	for i := 0; i < len(p); i++ {
+		if p[i] == '*' {
+			return true
+		}
+	}
+	return false
 }

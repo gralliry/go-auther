@@ -1,4 +1,4 @@
-package resource
+package model
 
 import "testing"
 
@@ -39,7 +39,7 @@ func TestMatchExact(t *testing.T) {
 		{"/data/**/export", "/data/reports/2024/export", true},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -63,7 +63,7 @@ func TestMatchEdgeCases(t *testing.T) {
 		{"/", "/", true},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -76,29 +76,6 @@ func TestMatchDoubleStarAlone(t *testing.T) {
 	}
 	if !Resource("**").Match("foo/bar") {
 		t.Error("** should match multiple segments")
-	}
-}
-
-func TestHasWildcard(t *testing.T) {
-	tests := []struct {
-		s    string
-		want bool
-	}{
-		{"", false},
-		{"/", false},
-		{"/user/create", false},
-		{"/user/*", true},
-		{"/**", true},
-		{"*", true},
-		{"**", true},
-		{"/a/*/b/**/c", true},
-		{"no wildcards here", false},
-	}
-	for _, tt := range tests {
-		got := Resource(tt.s).hasWildcard()
-		if got != tt.want {
-			t.Errorf("hasWildcard(%q) = %v, want %v", tt.s, got, tt.want)
-		}
 	}
 }
 
@@ -120,7 +97,7 @@ func TestMatchMultipleDoubleStars(t *testing.T) {
 		{"/a/**/x/**/z", "/a/x/z", true},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -154,7 +131,7 @@ func TestMatchDoubleStarAtEdges(t *testing.T) {
 		{"**", "a/b/c", true},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -179,7 +156,7 @@ func TestMatchBacktrackEdgeCases(t *testing.T) {
 		{"/api/**/v2/**/data", "/api/v1/data", false},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -201,17 +178,7 @@ func TestNew(t *testing.T) {
 		{"no-slash", "", true},
 	}
 	for _, tt := range tests {
-		got, err := New(tt.raw)
-		if tt.wantErr {
-			if err == nil {
-				t.Errorf("New(%q) should error", tt.raw)
-			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("New(%q): %v", tt.raw, err)
-			continue
-		}
+		got := NewResource(tt.raw)
 		if got.String() != tt.want {
 			t.Errorf("New(%q) = %q, want %q", tt.raw, got, tt.want)
 		}
@@ -274,7 +241,7 @@ func TestMatchStarAtStart(t *testing.T) {
 		{"*/b/c", "x/b/d", false},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -298,7 +265,7 @@ func TestMatchComplexMixedGlobs(t *testing.T) {
 		{"/a/**/b/*/c", "/a/b/c", false}, // * needs exactly one segment
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -319,7 +286,7 @@ func TestMatchDoubleStarRecursive(t *testing.T) {
 		{"/a/**/**/b", "/a/x/y/b", true},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -341,7 +308,7 @@ func TestMatchOnlyDoubleStar(t *testing.T) {
 		{"/**", "/a/b/c", true},
 	}
 	for _, tt := range tests {
-		got := Resource(tt.pattern).Match(tt.target)
+		got := Resource(tt.pattern).Match(Resource(tt.target))
 		if got != tt.want {
 			t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 		}
@@ -363,11 +330,7 @@ func TestNewNormalization(t *testing.T) {
 		{"/.", "/"},
 	}
 	for _, tt := range tests {
-		r, err := New(tt.raw)
-		if err != nil {
-			t.Errorf("New(%q): unexpected error %v", tt.raw, err)
-			continue
-		}
+		r := NewResource(tt.raw)
 		if r.String() != tt.want {
 			t.Errorf("New(%q) = %q, want %q", tt.raw, r.String(), tt.want)
 		}

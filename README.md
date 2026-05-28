@@ -80,8 +80,8 @@ func (a *Authorizer) GetResource(roleID string) ([]string, error)
 ```go
 func (a *Authorizer) Grant(fromRoleID, toRoleID, resource string) error
 func (a *Authorizer) Revoke(fromRoleID, toRoleID, resource string) error
-func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.GrantNode, error)
-func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.GrantNode, error)
+func (a *Authorizer) GetGrantsTo(roleID string) ([]*model.Grant, error)
+func (a *Authorizer) GetGrantsFrom(roleID string) ([]*model.Grant, error)
 ```
 
 `fromRoleID` must be an ancestor of `toRoleID`. Self-grant is not allowed. `Revoke` cascades: all descendant grants for the same resource are removed.

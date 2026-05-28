@@ -3,7 +3,5 @@
 .vscode/
 .idea/
 
-docs/
-examples/
 *.exe
 *.tmp

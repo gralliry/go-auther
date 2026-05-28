@@ -1,146 +1,183 @@
 package model
 
 import (
-	"sync"
+	"errors"
 
-	"github.com/gralliry/go-auther/internal/resource"
+	"github.com/gralliry/go-auther/internal/pkg/iset"
 )
 
-// RoleNode represents a node in the role tree.
-type RoleNode struct {
-	ID       string
-	Parent   *RoleNode
-	Children map[string]*RoleNode
-	Users    map[string]*UserNode
+var (
+	ErrRoleInvalid          = errors.New("invalid role")
+	ErrRoleAlreadyExist     = errors.New("role already exists")
+	ErrRoleNotFound         = errors.New("role not found")
+	ErrRoleInsufficient     = errors.New("insufficient role")
+	ErrRoleInvalidHierarchy = errors.New("invalid role hierarchy")
+	ErrRoleSelfGrant        = errors.New("self grant is not allowed")
+)
 
-	GrantedMap map[string]bool
-	GrantsIn   []*GrantNode
-	GrantsOut  []*GrantNode
+// Role represents a node in the role tree.
+type Role struct {
+	// immutable field
+	id string
+	// Valid() verify this field is not nil
+	// IsRoot() verify this field is self
+	parent   *Role
+	children *iset.CacheSet[*Role]
 
-	matchCache sync.Map
+	srcGrants *iset.CacheSet[*Policy]
+	tarGrants *iset.CacheSet[*Policy]
 }
 
-// HasAncestor reports whether the given role ID is an ancestor of this role.
-func (r *RoleNode) HasAncestor(ancestorID string) bool {
-	for p := r; p != nil; p = p.Parent {
-		if p.ID == ancestorID {
-			return true
+func rawRole(id string) *Role {
+	return &Role{
+		id:        id,
+		parent:    nil,
+		children:  iset.NewCacheSet[*Role](true),
+		srcGrants: iset.NewCacheSet[*Policy](false),
+		tarGrants: iset.NewCacheSet[*Policy](true),
+	}
+}
+
+func (r *Role) ID() string {
+	return r.id
+}
+
+func (r *Role) Valid() bool {
+	return r != nil && r.parent != nil
+}
+
+func (r *Role) Parent() (*Role, error) {
+	if !r.Valid() {
+		return nil, ErrRoleInvalid
+	}
+	if r.parent == r {
+		return nil, nil
+	}
+	return r.parent, nil
+}
+
+func (r *Role) IsParent(parent *Role) (bool, error) {
+	if !r.Valid() {
+		return false, ErrRoleInvalid
+	}
+	return r.parent == parent, nil
+}
+
+func (r *Role) Children() ([]*Role, error) {
+	if !r.Valid() {
+		return nil, ErrRoleInvalid
+	}
+	return r.children.ToSlice(), nil
+}
+
+func (r *Role) Enforce(resource Resource) (bool, error) {
+	if !r.Valid() {
+		return false, ErrRoleInvalid
+	}
+	return r.srcGrants.Any(func(p *Policy) bool {
+		return p.Match(resource)
+	}), nil
+}
+
+func (r *Role) Grant(grantee *Role, resource Resource) error {
+	// check if r is valid
+	if !r.Valid() {
+		return ErrRoleInvalid
+	}
+	// check if grantee is valid
+	if !grantee.Valid() {
+		return ErrRoleInvalid
+	}
+	// check if grantee is an ancestor of r
+	for p := r.parent; ; p = p.parent {
+		if p == grantee {
+			return ErrRoleInvalidHierarchy
+		}
+		if p == p.parent {
+			break
 		}
 	}
-	return false
+	// check if r is grantee
+	if r == grantee {
+		return ErrRoleSelfGrant
+	}
+	// 检查是否有足够的权限
+	if !r.srcGrants.Any(func(p *Policy) bool {
+		return p.Match(resource)
+	}) {
+		return ErrRoleInsufficient
+	}
+	// Create policy
+	policy := rawPolicy(0, r, grantee, resource)
+	// Create policy if not exists
+	if r.tarGrants.Any(func(p *Policy) bool {
+		return p.Equal(policy)
+	}) {
+		return ErrPolicyAlreadyExist
+	}
+	// Add policy to target
+	r.tarGrants.Add(policy)
+	// Add policy to source
+	grantee.srcGrants.Add(policy)
+	return nil
 }
 
-// HasResource checks whether any pattern in GrantedMap matches the target resource.
-func (r *RoleNode) HasResource(target string) bool {
-	if r == nil {
-		return false
+func (r *Role) Revoke(policy *Policy) error {
+	// check if policy is valid
+	if !policy.Valid() {
+		return ErrPolicyInvalid
 	}
-	if r.GrantedMap[target] {
-		return true
+	// check policy exists
+	if !r.tarGrants.Has(policy) {
+		return ErrPolicyNotFound
 	}
-	if cached, ok := r.GetMatchCache(target); ok {
-		return cached
-	}
-	for pattern := range r.GrantedMap {
-		if resource.Resource(pattern).Match(target) {
-			r.SetMatchCache(target, true)
-			return true
-		}
-	}
-	r.SetMatchCache(target, false)
-	return false
+	// revoke policy
+	policy.grantor = nil
+	// clean target
+	r.clean()
+	return nil
 }
 
-// Resources returns all resource patterns in GrantedMap.
-func (r *RoleNode) Resources() []string {
-	if r == nil {
-		return nil
-	}
-	result := make([]string, 0, len(r.GrantedMap))
-	for res := range r.GrantedMap {
-		result = append(result, res)
-	}
-	return result
+// force clean all grants
+// 最核心代码
+func (r *Role) clean() {
+	// 找到并清理无效的策略
+	revoked := r.srcGrants.GC()
+	// 找到需要审查的策略
+	toReviewed := revoked.Filter(func(p1 *Policy) bool {
+		// 授权的权限出现在了被撤销的策略中，可能无效，需要审查
+		return r.tarGrants.Any(func(p2 *Policy) bool {
+			return p1.Match(p2.resource)
+		})
+	})
+	// 找到并清理需要撤销的策略
+	toRevoked := toReviewed.ExtractIf(func(p1 *Policy) bool {
+		// p1 没有出现 source 中的策略
+		return !r.srcGrants.Any(func(p2 *Policy) bool {
+			return p2.Match(p1.resource)
+		})
+	})
+	// 开始递归撤销策略
+	// 不要边遍历边递归，因为有可能多个权限指向同一个组，节约性能
+	toRevoked.Range(func(p *Policy) {
+		p.grantor = nil
+	})
+	// 清理 target 中的无效策略
+	toRevoked.Range(func(p *Policy) {
+		p.grantee.clean()
+	})
 }
 
-// GetMatchCache retrieves a cached match result for the given target.
-func (r *RoleNode) GetMatchCache(key string) (bool, bool) {
-	if r == nil {
-		return false, false
+func (r *Role) Received() ([]*Policy, error) {
+	if !r.Valid() {
+		return nil, ErrRoleInvalid
 	}
-	v, ok := r.matchCache.Load(key)
-	if !ok {
-		return false, false
-	}
-	return v.(bool), true
+	return r.srcGrants.ToSlice(), nil
 }
 
-// SetMatchCache stores a match result in the cache.
-func (r *RoleNode) SetMatchCache(key string, val bool) {
-	if r == nil {
-		return
+func (r *Role) Granted() ([]*Policy, error) {
+	if !r.Valid() {
+		return nil, ErrRoleInvalid
 	}
-	r.matchCache.Store(key, val)
-}
-
-// ResetMatchCache clears the match cache. Called after write operations.
-func (r *RoleNode) ResetMatchCache() {
-	if r == nil {
-		return
-	}
-	r.matchCache = sync.Map{}
-}
-
-// RoleInfo is the public view of a role, returned by the Authorizer API.
-type RoleInfo struct {
-	ID         string
-	ParentID   string
-	Resources  []string
-	SubRoleIDs []string
-	UserIDs    []string
-	GrantsIn   []*GrantNode
-	GrantsOut  []*GrantNode
-}
-
-// Subtree collects this role and all its descendants using BFS.
-func (r *RoleNode) Subtree() []*RoleNode {
-	if r == nil {
-		return nil
-	}
-	var result []*RoleNode
-	queue := []*RoleNode{r}
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		result = append(result, cur)
-		for _, child := range cur.Children {
-			queue = append(queue, child)
-		}
-	}
-	return result
-}
-
-// ToInfo converts a RoleNode to the public RoleInfo struct.
-func (r *RoleNode) ToInfo() *RoleInfo {
-	if r == nil {
-		return nil
-	}
-	info := &RoleInfo{
-		ID:         r.ID,
-		Resources:  r.Resources(),
-		SubRoleIDs: make([]string, 0, len(r.Children)),
-		UserIDs:    make([]string, 0, len(r.Users)),
-		GrantsIn:   append([]*GrantNode(nil), r.GrantsIn...),
-		GrantsOut:  append([]*GrantNode(nil), r.GrantsOut...),
-	}
-	if r.Parent != nil {
-		info.ParentID = r.Parent.ID
-	}
-	for childID := range r.Children {
-		info.SubRoleIDs = append(info.SubRoleIDs, childID)
-	}
-	for userID := range r.Users {
-		info.UserIDs = append(info.UserIDs, userID)
-	}
-	return info
+	return r.tarGrants.ToSlice(), nil
 }
