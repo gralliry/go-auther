@@ -16,8 +16,18 @@ var (
 type User struct {
 	// immutable field
 	id string
-	// Valid() verify this field is not nil
-	roles *set.CacheSet[*Role]
+	//
+	roles *set.AutoCacheSet[*Role]
+	// Valid() verify this field is not false
+	valid bool
+}
+
+func newUser(id string) *User {
+	return &User{
+		id:    id,
+		roles: set.NewAutoCacheSet[*Role](),
+		valid: true,
+	}
 }
 
 func (u *User) ID() string {
@@ -25,7 +35,7 @@ func (u *User) ID() string {
 }
 
 func (u *User) Valid() bool {
-	return u != nil && u.roles != nil
+	return u != nil && u.valid
 }
 
 func (u *User) Assign(role *Role) error {
@@ -74,4 +84,13 @@ func (u *User) Enforce(resource Resource) (bool, error) {
 		ok, err := r.Enforce(resource)
 		return ok && err == nil
 	}), nil
+}
+
+func (u *User) Delete() error {
+	if !u.Valid() {
+		return ErrUserInvalid
+	}
+	u.valid = false
+	u.roles.Clear()
+	return nil
 }

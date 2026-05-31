@@ -2,120 +2,129 @@ package model
 
 import (
 	"errors"
-	"sync"
 
-	"github.com/gammazero/deque"
-	"github.com/gralliry/go-auther/adapter/memory"
+	// var q deque.Deque[*Role]
+
+	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/internal/pkg/algo"
 	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
-type Option func(*Config)
-
-type Config struct {
-	Adapter Adapter
-	Fixed   bool
-}
-
-func WithAdapter(adapter Adapter) Option {
-	return func(cfg *Config) { cfg.Adapter = adapter }
-}
-
-func WithFixed(fixed bool) Option {
-	return func(cfg *Config) { cfg.Fixed = fixed }
-}
+type (
+	Adapter = adapter.Adapter
+)
 
 type Manager struct {
-	root *Role
+	roles *set.AutoCacheMap[string, *Role]
+	users *set.AutoCacheMap[string, *User]
 
-	namespace set.Set[string]
-	roles     set.ValueSet[string, *Role]
-	users     set.ValueSet[string, *User]
-
-	mtx     sync.RWMutex
 	adapter Adapter
 }
 
-func (m *Manager) Init(opts ...Option) error {
-	// 初始化配置
-	cfg := &Config{
-		Adapter: memory.New(),
-		Fixed:   true,
-	}
-	for _, opt := range opts {
-		opt(cfg)
-	}
+func New(adapter Adapter) (*Manager, error) {
 	// 参数校验
-	if cfg.Adapter == nil {
-		return errors.New("adapter is nil")
+	if adapter == nil {
+		return nil, errors.New("adapter is nil")
 	}
 	// 初始化adapter
-	m.adapter = cfg.Adapter
-	// 初始化root
-	root := rawRole("root")
-	// set: root
-	root.parent = root
+	m := &Manager{
+		roles:   set.NewAutoCacheMap[string, *Role](),
+		users:   set.NewAutoCacheMap[string, *User](),
+		adapter: adapter,
+	}
+
 	// load roleInfo | users | grants
-	roleInfo, err := m.adapter.AllRoles()
+	data, err := m.adapter.All()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	userInfo, err := m.adapter.AllUsers()
-	if err != nil {
-		return err
+
+	// 构建 role
+	for _, info := range data.Role {
+		role := newRole(info.ID)
+		m.roles.Add(role)
 	}
-	grantInfo, err := m.adapter.AllGrants()
-	if err != nil {
-		return err
+	rootRole := newRole("root")
+	m.roles.Add(rootRole)
+
+	// 构建 user
+	for _, info := range data.User {
+		// 构建 user
+		user, exist := m.users.Get(info.ID)
+		if !exist {
+			user = newUser(info.ID)
+			m.users.Add(user)
+		}
+		// 添加 role 到 user
+		role, exist := m.roles.Get(info.RoleID)
+		if exist {
+			user.roles.Add(role)
+		}
+		// 添加 grant 到 role
+		m.users.Add(user)
 	}
-	_ = grantInfo
-	_ = userInfo
-	_ = roleInfo
-	// 构建role tree
-	roleMap := make(map[string]*Role)
-	for _, role := range roleInfo {
-		childID := role[0]
-		roleMap[childID] = rawRole(childID)
-	}
-	for _, role := range roleInfo {
-		childID, parentID := role[0], role[1]
-		// role 一定存在
-		childNode := roleMap[childID]
-		parentNode, ok := roleMap[parentID]
-		if !ok {
+
+	rootPolicy := newPolicy(0, Resource("/**"))
+	rootRole.srcGrants.Add(rootPolicy)
+
+	// 构建 policy
+	policyMap := make(map[int64]int64)
+	for _, info := range data.Policy {
+		if !m.roles.HasByKey(info.GrantorRoleID) {
 			continue
 		}
-		// parent 添加 child
-		parentNode.children.Add(childNode)
-		// child 设置 parent
-		childNode.parent = parentNode
-	}
-	clear(roleMap)
-	clear(roleInfo)
-	// 广度优先遍历，构建role tree // roleList 查找有效role
-	var q deque.Deque[*Role]
-	q.PushBack(root)
-	for q.Len() > 0 {
-		node := q.PopFront()
-		roleMap[node.ID()] = node
-		for _, child := range node.children.ToSlice() {
-			q.PushBack(child)
+		if !m.roles.HasByKey(info.GranteeRoleID) {
+			continue
 		}
+		policyMap[info.ID] = info.ParentID
 	}
-	q.Clear()
+	// 剪枝无效的 policy
+	policyMap = algo.PruneTree(0, policyMap)
+	for _, info := range data.Policy {
+		if _, ok := policyMap[info.ID]; !ok {
+			continue
+		}
+		grantor, exist := m.roles.Get(info.GrantorRoleID)
+		if !exist {
+			continue
+		}
+		grantee, exist := m.roles.Get(info.GranteeRoleID)
+		if !exist {
+			continue
+		}
+		policy := newPolicy(info.ID, Resource(info.Resource))
+		// 构建关系链
+		grantor.tarGrants.Add(policy)
+		grantee.srcGrants.Add(policy)
+	}
 
-	// 初始化任务
-
-	return nil
+	return m, nil
 }
 
-func (m *Manager) CreateRole(parent *Role, id string) (*Role, error) {
-	if !parent.Valid() {
-		return nil, ErrRoleInvalid
+func (m *Manager) CreateRole(roleID string) (*Role, error) {
+	if m.roles.HasByKey(roleID) {
+		return nil, errors.New("role already exists")
 	}
-	child := rawRole(id)
-	// 设置 parent
-	child.parent = parent
-	// parent 添加 child
-	parent.children.Add(child)
-	return child, nil
+	role := newRole(roleID)
+	m.roles.Add(role)
+	return role, nil
+}
+
+func (m *Manager) GetRole(roleID string) (*Role, bool) {
+	role, exist := m.roles.Get(roleID)
+	return role, exist
+}
+
+func (m *Manager) CreateUser(userID string) (*User, error) {
+	if m.users.HasByKey(userID) {
+		return nil, errors.New("user already exists")
+	}
+	user := newUser(userID)
+	m.users.Add(user)
+	return user, nil
+}
+
+func (m *Manager) GetUser(userID string) (*User, bool) {
+	user, exist := m.users.Get(userID)
+	return user, exist
 }

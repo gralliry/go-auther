@@ -1,35 +1,33 @@
 package set
 
-type CacheSetV interface {
+type CacheSetNode interface {
 	comparable
 	Valid() bool
 }
 
-type CacheSet[V CacheSetV] struct {
-	data      map[V]struct{}
-	garbage   map[V]struct{}
-	autoclean bool
+type CacheSet[V CacheSetNode] struct {
+	data    map[V]struct{}
+	garbage map[V]struct{}
 }
 
-func NewCacheSet[V CacheSetV](autoclean bool) *CacheSet[V] {
+func NewCacheSet[V CacheSetNode]() *CacheSet[V] {
 	return &CacheSet[V]{
-		data:      make(map[V]struct{}),
-		garbage:   make(map[V]struct{}),
-		autoclean: autoclean,
+		data:    make(map[V]struct{}),
+		garbage: make(map[V]struct{}),
 	}
 }
 
-func (s CacheSet[V]) Add(value V) {
-	s.data[value] = struct{}{}
+func (s CacheSet[V]) Add(val V) {
+	s.data[val] = struct{}{}
 }
 
-func (s CacheSet[V]) Has(value V) bool {
-	_, ok := s.data[value]
+func (s CacheSet[V]) Has(val V) bool {
+	_, ok := s.data[val]
 	return ok
 }
 
-func (s CacheSet[V]) Delete(value V) {
-	delete(s.data, value)
+func (s CacheSet[V]) Delete(val V) {
+	delete(s.data, val)
 }
 
 func (c CacheSet[V]) GC() Set[V] {
@@ -41,30 +39,25 @@ func (c CacheSet[V]) GC() Set[V] {
 
 func (c CacheSet[V]) traverse(fn func(V)) {
 	for v := range c.data {
-		if v.Valid() {
-			fn(v)
+		if !v.Valid() {
+			c.garbage[v] = struct{}{}
+			delete(c.data, v)
 			continue
 		}
-		if !c.autoclean {
-			c.garbage[v] = struct{}{}
-		}
-		delete(c.data, v)
+		fn(v)
 	}
 }
 
 func (c CacheSet[V]) traverseIf(fn func(V) bool) {
 	for v := range c.data {
-		if v.Valid() {
-			if fn(v) {
-				continue
-			} else {
-				return
-			}
-		}
-		if !c.autoclean {
+		if !v.Valid() {
 			c.garbage[v] = struct{}{}
+			delete(c.data, v)
+			continue
 		}
-		delete(c.data, v)
+		if !fn(v) {
+			return
+		}
 	}
 }
 

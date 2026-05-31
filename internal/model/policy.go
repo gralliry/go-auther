@@ -1,29 +1,35 @@
 package model
 
-import "errors"
+import (
+	"errors"
 
-var (
-	ErrPolicyInvalid      = errors.New("invalid policy")
-	ErrPolicyNotFound     = errors.New("policy not found")
-	ErrPolicyAlreadyExist = errors.New("policy already exists")
+	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
-// Policy represents an explicit resource grant from an ancestor role to a descendant.
+var (
+	ErrPolicyInvalid  = errors.New("policy invalid")
+	ErrPolicyNotMatch = errors.New("policy not match")
+	ErrPolicyNotFound = errors.New("policy not found")
+)
+
 type Policy struct {
 	// immutable field
 	id int64
-	// Valid() verify grantor and grantee is not nil
-	grantor  *Role
-	grantee  *Role
+
 	resource Resource
+
+	// when grantable == false, children must be nil or empty
+	children *set.AutoCacheSet[*Policy]
+
+	valid bool
 }
 
-func rawPolicy(id int64, grantor *Role, grantee *Role, resource Resource) *Policy {
+func newPolicy(id int64, resource Resource) *Policy {
 	return &Policy{
 		id:       id,
-		grantor:  grantor,
-		grantee:  grantee,
+		children: set.NewAutoCacheSet[*Policy](),
 		resource: resource,
+		valid:    true,
 	}
 }
 
@@ -32,31 +38,35 @@ func (p *Policy) ID() int64 {
 }
 
 func (p *Policy) Valid() bool {
-	return p != nil && p.grantor != nil && p.grantee != nil
-}
-
-func (p *Policy) Grantor() (*Role, error) {
-	if !p.Valid() {
-		return nil, ErrPolicyInvalid
-	}
-	return p.grantor, nil
-}
-
-func (p *Policy) Grantee() (*Role, error) {
-	if !p.Valid() {
-		return nil, ErrPolicyInvalid
-	}
-	return p.grantee, nil
+	return p != nil && p.valid
 }
 
 func (p *Policy) Match(resource Resource) bool {
-	// reduce function call
 	return p.resource.Match(resource)
 }
 
-func (p *Policy) Equal(p2 *Policy) bool {
-	return p.Valid() && p2.Valid() &&
-		p.grantee == p2.grantee &&
-		p.grantor == p2.grantor &&
-		p.resource == p2.resource
+func (p *Policy) delegate(resource Resource) (*Policy, error) {
+	if !p.Valid() {
+		return nil, ErrPolicyInvalid
+	}
+	if !p.Match(resource) {
+		return nil, ErrPolicyNotMatch
+	}
+	policy := &Policy{
+		id:       node.Generate().Int64(),
+		children: set.NewAutoCacheSet[*Policy](),
+		resource: resource,
+		valid:    true,
+	}
+	p.children.Add(policy)
+	return policy, nil
+}
+
+func (p *Policy) revoke() {
+	// 断开与 parent 的关联
+	p.valid = false
+	// 递归撤销子策略
+	p.children.Range(func(child *Policy) {
+		child.revoke()
+	})
 }

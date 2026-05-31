@@ -5,12 +5,12 @@ import (
 	"maps"
 )
 
-type ValueSetV[K comparable] interface {
+type ValueSetNode[K comparable] interface {
 	comparable
 	ID() K
 }
 
-type ValueSet[K comparable, V ValueSetV[K]] map[K]V
+type ValueSet[K comparable, V ValueSetNode[K]] map[K]V
 
 func (i ValueSet[K, V]) Length() int {
 	return len(i)
@@ -32,10 +32,6 @@ func (i ValueSet[K, V]) Get(key K) (V, bool) {
 }
 
 func (i ValueSet[K, V]) Add(value V) {
-	var zero V
-	if value == zero {
-		return
-	}
 	i[value.ID()] = value
 }
 
