@@ -13,60 +13,54 @@ var (
 )
 
 type Policy struct {
-	// immutable field
-	id int64
-
-	resource Resource
-
-	// when grantable == false, children must be nil or empty
+	id       int64
+	res      Resource
+	parents  *set.AutoCacheSet[*Policy]
 	children *set.AutoCacheSet[*Policy]
-
-	valid bool
+	valid    bool
+	area     *Area
 }
 
-func newPolicy(id int64, resource Resource) *Policy {
+func newPolicy(id int64, res Resource, area *Area) *Policy {
 	return &Policy{
 		id:       id,
+		parents:  set.NewAutoCacheSet[*Policy](),
 		children: set.NewAutoCacheSet[*Policy](),
-		resource: resource,
+		res:      res,
 		valid:    true,
+		area:     area,
 	}
 }
 
-func (p *Policy) ID() int64 {
-	return p.id
+func (p *Policy) ID() int64     { return p.id }
+func (p *Policy) Valid() bool   { return p != nil && p.valid }
+func (p *Policy) Resource() string { return string(p.res) }
+
+func (p *Policy) contains(target Resource) bool {
+	return p.res.Match(target)
 }
 
-func (p *Policy) Valid() bool {
-	return p != nil && p.valid
+func (p *Policy) within(pattern Resource) bool {
+	return pattern.Match(p.res)
 }
 
-func (p *Policy) Match(resource Resource) bool {
-	return p.resource.Match(resource)
-}
-
-func (p *Policy) delegate(resource Resource) (*Policy, error) {
-	if !p.Valid() {
-		return nil, ErrPolicyInvalid
-	}
-	if !p.Match(resource) {
-		return nil, ErrPolicyNotMatch
-	}
-	policy := &Policy{
-		id:       node.Generate().Int64(),
-		children: set.NewAutoCacheSet[*Policy](),
-		resource: resource,
-		valid:    true,
-	}
-	p.children.Add(policy)
-	return policy, nil
-}
-
+// revoke invalidates this policy and cascades to orphaned children.
+// The caller must hold p.area.mutex (write lock).
 func (p *Policy) revoke() {
-	// 断开与 parent 的关联
+	if !p.Valid() {
+		return
+	}
 	p.valid = false
-	// 递归撤销子策略
+	p.area.DeletePolicy(p.id)
+	p.parents.Range(func(parent *Policy) {
+		parent.children.Delete(p)
+	})
 	p.children.Range(func(child *Policy) {
-		child.revoke()
+		child.parents.Delete(p)
+		if !child.parents.Any(func(pp *Policy) bool {
+			return pp.Valid()
+		}) {
+			child.revoke()
+		}
 	})
 }

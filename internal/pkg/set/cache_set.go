@@ -17,42 +17,42 @@ func NewCacheSet[V CacheSetNode]() *CacheSet[V] {
 	}
 }
 
-func (s CacheSet[V]) Add(val V) {
+func (s *CacheSet[V]) Add(val V) {
 	s.data[val] = struct{}{}
 }
 
-func (s CacheSet[V]) Has(val V) bool {
+func (s *CacheSet[V]) Has(val V) bool {
 	_, ok := s.data[val]
 	return ok
 }
 
-func (s CacheSet[V]) Delete(val V) {
+func (s *CacheSet[V]) Delete(val V) {
 	delete(s.data, val)
 }
 
-func (c CacheSet[V]) GC() Set[V] {
-	c.traverse(func(V) {})
-	garbage := c.garbage
-	c.garbage = make(map[V]struct{})
+func (s *CacheSet[V]) GC() Set[V] {
+	s.traverse(func(V) {})
+	garbage := s.garbage
+	s.garbage = make(map[V]struct{})
 	return garbage
 }
 
-func (c CacheSet[V]) traverse(fn func(V)) {
-	for v := range c.data {
+func (s *CacheSet[V]) traverse(fn func(V)) {
+	for v := range s.data {
 		if !v.Valid() {
-			c.garbage[v] = struct{}{}
-			delete(c.data, v)
+			s.garbage[v] = struct{}{}
+			delete(s.data, v)
 			continue
 		}
 		fn(v)
 	}
 }
 
-func (c CacheSet[V]) traverseIf(fn func(V) bool) {
-	for v := range c.data {
+func (s *CacheSet[V]) traverseIf(fn func(V) bool) {
+	for v := range s.data {
 		if !v.Valid() {
-			c.garbage[v] = struct{}{}
-			delete(c.data, v)
+			s.garbage[v] = struct{}{}
+			delete(s.data, v)
 			continue
 		}
 		if !fn(v) {
@@ -61,25 +61,25 @@ func (c CacheSet[V]) traverseIf(fn func(V) bool) {
 	}
 }
 
-func (c CacheSet[V]) Length() int {
+func (s *CacheSet[V]) Length() int {
 	count := 0
-	c.traverse(func(V) {
+	s.traverse(func(V) {
 		count++
 	})
 	return count
 }
 
-func (c CacheSet[V]) ToSlice() []V {
+func (s *CacheSet[V]) ToSlice() []V {
 	out := make([]V, 0)
-	c.traverse(func(v V) {
+	s.traverse(func(v V) {
 		out = append(out, v)
 	})
 	return out
 }
 
-func (c CacheSet[V]) Filter(fn func(V) bool) CacheSet[V] {
+func (s *CacheSet[V]) Filter(fn func(V) bool) CacheSet[V] {
 	out := map[V]struct{}{}
-	c.traverse(func(v V) {
+	s.traverse(func(v V) {
 		if fn(v) {
 			out[v] = struct{}{}
 		}
@@ -89,22 +89,22 @@ func (c CacheSet[V]) Filter(fn func(V) bool) CacheSet[V] {
 	}
 }
 
-func (c CacheSet[V]) Range(fn func(V)) {
-	c.traverse(fn)
+func (s *CacheSet[V]) Range(fn func(V)) {
+	s.traverse(fn)
 }
 
-func (c CacheSet[V]) All(fn func(V) bool) bool {
+func (s *CacheSet[V]) All(fn func(V) bool) bool {
 	ok := true
-	c.traverseIf(func(v V) bool {
+	s.traverseIf(func(v V) bool {
 		ok = fn(v)
 		return ok
 	})
 	return ok
 }
 
-func (c CacheSet[V]) Any(fn func(V) bool) bool {
+func (s *CacheSet[V]) Any(fn func(V) bool) bool {
 	found := false
-	c.traverseIf(func(v V) bool {
+	s.traverseIf(func(v V) bool {
 		found = fn(v)
 		return !found
 	})

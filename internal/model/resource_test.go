@@ -165,17 +165,16 @@ func TestMatchBacktrackEdgeCases(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	tests := []struct {
-		raw     string
-		want    string
-		wantErr bool
+		raw  string
+		want string
 	}{
-		{"/user/create", "/user/create", false},
-		{"/user//create", "/user/create", false},
-		{"/user/./create", "/user/create", false},
-		{"/user/../create", "/create", false},
-		{"/trailing/", "/trailing", false},
-		{"", "", true},
-		{"no-slash", "", true},
+		{"/user/create", "/user/create"},
+		{"/user//create", "/user/create"},
+		{"/user/./create", "/user/create"},
+		{"/user/../create", "/create"},
+		{"/trailing/", "/trailing"},
+		{"", "/"},
+		{"no-slash", "/no-slash"},
 	}
 	for _, tt := range tests {
 		got := NewResource(tt.raw)

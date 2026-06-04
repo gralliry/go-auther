@@ -15,7 +15,7 @@ func NewResource(raw string) Resource {
 		return Resource("/")
 	}
 	if raw[0] != '/' {
-		return Resource("/" + raw)
+		raw = "/" + raw
 	}
 	return Resource(path.Clean(raw))
 }
@@ -24,16 +24,13 @@ func NewResource(raw string) Resource {
 func (r Resource) String() string { return string(r) }
 
 // Match reports whether the target matches this resource's glob pattern.
-func (r Resource) Match(resource Resource) bool {
-	// Exact match.
-	if r == resource {
+func (r Resource) Match(target Resource) bool {
+	if r == target {
 		return true
 	}
-	// Glob match.
-	pattern := r.String()
-	if !match.HasWildcard(pattern) {
+	s := string(r)
+	if !match.HasWildcard(s) {
 		return false
 	}
-	// Glob match.
-	return match.MatchGlob(pattern, string(resource))
+	return match.MatchGlob(s, string(target))
 }

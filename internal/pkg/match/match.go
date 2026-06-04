@@ -2,7 +2,8 @@ package match
 
 const noStar = -1
 
-// MatchGlob 分段迭代匹配。* 匹配单段，** 匹配零或多段。
+// MatchGlob performs segment-by-segment iterative matching.
+// * matches one segment, ** matches zero or more.
 func MatchGlob(p, t string) bool {
 	pi, ti := 0, 0
 	starPi, starTi := noStar, noStar
@@ -57,7 +58,7 @@ func MatchGlob(p, t string) bool {
 	}
 }
 
-// backtrackStar 尝试通过 ** 回溯点多消耗目标的一段。
+// backtrackStar advances past one more target segment via the ** backtrack point.
 func backtrackStar(pi, ti *int, starPi int, starTi *int, t string) bool {
 	if starPi == noStar {
 		return false
@@ -74,7 +75,7 @@ func backtrackStar(pi, ti *int, starPi int, starTi *int, t string) bool {
 	return true
 }
 
-// tailGlobStar 检查 pattern 剩余部分是否只包含 '/' 和通配符。
+// tailGlobStar checks whether the remaining pattern consists only of '/' and wildcards.
 func tailGlobStar(p string, pi int) bool {
 	for pi < len(p) {
 		if p[pi] == '/' {
@@ -90,7 +91,7 @@ func tailGlobStar(p string, pi int) bool {
 	return true
 }
 
-// HasWildcard 判断模式是否包含 '*' 通配符。
+// HasWildcard reports whether the pattern contains a '*' wildcard.
 func HasWildcard(p string) bool {
 	for i := 0; i < len(p); i++ {
 		if p[i] == '*' {

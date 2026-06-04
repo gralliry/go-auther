@@ -3,10 +3,10 @@ package algo
 import "maps"
 
 func PruneTree[T comparable](rootID T, parent map[T]T) map[T]T {
-	// 复制一份，避免修改原 map
+	// Copy to avoid mutating the original map.
 	p := make(map[T]T, len(parent))
 	maps.Copy(p, parent)
-	// root 不允许有父节点
+	// Root must not have a parent.
 	delete(p, rootID)
 	// parent -> children
 	children := make(map[T][]T)

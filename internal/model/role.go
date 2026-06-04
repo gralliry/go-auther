@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 
+	"github.com/gralliry/go-auther/adapter"
 	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
@@ -16,65 +17,99 @@ var (
 )
 
 type Role struct {
-	// immutable field
-	id string
-	// inheritance graph
+	id        string
 	srcGrants *set.AutoCacheSet[*Policy]
 	tarGrants *set.AutoCacheSet[*Policy]
-	// Valid() verify this field is not false
-	valid bool
+	valid     bool
+	area      *Area
 }
 
-func newRole(id string) *Role {
+func newRole(id string, area *Area) *Role {
 	return &Role{
 		id:        id,
 		srcGrants: set.NewAutoCacheSet[*Policy](),
 		tarGrants: set.NewAutoCacheSet[*Policy](),
 		valid:     true,
+		area:      area,
 	}
 }
 
-func (r *Role) ID() string {
-	return r.id
+func (r *Role) ID() string  { return r.id }
+func (r *Role) Valid() bool { return r != nil && r.valid }
+
+func (r *Role) Enforce(res Resource) (bool, error) {
+	r.area.RLock()
+	defer r.area.RUnlock()
+	return r.enforce(res)
 }
 
-func (r *Role) Valid() bool {
-	return r != nil && r.valid
-}
-
-func (r *Role) Enforce(resource Resource) (bool, error) {
+func (r *Role) enforce(res Resource) (bool, error) {
 	if !r.Valid() {
 		return false, ErrRoleInvalid
 	}
 	return r.srcGrants.Any(func(p *Policy) bool {
-		return p.Match(resource)
+		return p.contains(res)
 	}), nil
 }
 
-func (r *Role) Grant(
-	policy *Policy,
-	resource Resource,
-	grantee *Role,
-) (*Policy, error) {
+func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
+	r.area.Lock()
+	defer r.area.Unlock()
+
 	if !r.Valid() {
 		return nil, ErrRoleInvalid
 	}
 	if !grantee.Valid() {
 		return nil, ErrRoleInvalid
 	}
-	if !r.srcGrants.Has(policy) {
-		return nil, ErrPolicyNotFound
+	if r.id == grantee.id {
+		return nil, ErrRoleSelfGrant
 	}
-	newPolicy, err := policy.delegate(resource)
-	if err != nil {
-		return nil, err
+
+	parentPolicies := r.srcGrants.Filter(func(p *Policy) bool {
+		return p.contains(res)
+	})
+	if parentPolicies.Length() == 0 {
+		return nil, ErrRoleInsufficient
 	}
-	r.tarGrants.Add(newPolicy)
-	grantee.srcGrants.Add(newPolicy)
-	return newPolicy, nil
+
+	childPolicies := grantee.srcGrants.Filter(func(p *Policy) bool {
+		return p.within(res)
+	})
+
+	policy := &Policy{
+		id:       r.area.GenerateID(),
+		res:      res,
+		parents:  parentPolicies,
+		children: childPolicies,
+		valid:    true,
+		area:     r.area,
+	}
+
+	parentPolicies.Range(func(parent *Policy) {
+		parent.children.Add(policy)
+	})
+	childPolicies.Range(func(child *Policy) {
+		child.parents.Add(policy)
+	})
+
+	r.tarGrants.Add(policy)
+	grantee.srcGrants.Add(policy)
+
+	r.area.CreatePolicy(adapter.Policy{
+		ID:            policy.id,
+		Resource:      string(res),
+		GrantorRoleID: r.id,
+		GranteeRoleID: grantee.id,
+	})
+
+	return policy, nil
 }
 
 func (r *Role) Revoke(policy *Policy) error {
+	r.area.Lock()
+	defer r.area.Unlock()
+
 	if !r.Valid() {
 		return ErrRoleInvalid
 	}
@@ -87,23 +122,16 @@ func (r *Role) Revoke(policy *Policy) error {
 }
 
 func (r *Role) Delete() error {
+	r.area.Lock()
+	defer r.area.Unlock()
+
 	if !r.Valid() {
 		return ErrRoleInvalid
 	}
 	r.valid = false
-	r.srcGrants.Range(func(policy *Policy) {
-		// 不要使用 revoke() 方法，否则会递归调用
-		policy.valid = false
-	})
-	r.srcGrants.Clear()
-	r.tarGrants.Range(func(policy *Policy) {
-		// 使用 revoke() 方法断开与 parent 的关联
-		policy.revoke()
-	})
-	r.tarGrants.Clear()
-	return nil
-}
 
-func (r *Role) Reviced() []*Policy {
-	return r.srcGrants.ToSlice()
+	r.srcGrants.Range(func(p *Policy) { p.revoke() })
+	r.tarGrants.Range(func(p *Policy) { p.revoke() })
+	r.area.DeleteRole(r.id)
+	return nil
 }

@@ -20,10 +20,10 @@ func (a *Adapter) All() (adapter.Snapshot, error) {
 }
 
 func (a *Adapter) CreateRole(role adapter.Role) error { return nil }
-func (a *Adapter) DeleteRole(roleID int64) error      { return nil }
+func (a *Adapter) DeleteRole(roleID string) error      { return nil }
 
 func (a *Adapter) CreateUser(user adapter.User) error { return nil }
-func (a *Adapter) DeleteUser(userID int64) error      { return nil }
+func (a *Adapter) DeleteUser(userID string) error      { return nil }
 
 func (a *Adapter) CreatePolicy(policy adapter.Policy) error { return nil }
 func (a *Adapter) DeletePolicy(policyID int64) error        { return nil }

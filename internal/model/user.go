@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 
+	"github.com/gralliry/go-auther/adapter"
 	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
@@ -12,33 +13,29 @@ var (
 	ErrRoleNotAssigned     = errors.New("role not assigned")
 )
 
-// User represents a user in the authorization system.
 type User struct {
-	// immutable field
-	id string
-	//
+	id    string
 	roles *set.AutoCacheSet[*Role]
-	// Valid() verify this field is not false
 	valid bool
+	area  *Area
 }
 
-func newUser(id string) *User {
+func newUser(id string, area *Area) *User {
 	return &User{
 		id:    id,
 		roles: set.NewAutoCacheSet[*Role](),
 		valid: true,
+		area:  area,
 	}
 }
 
-func (u *User) ID() string {
-	return u.id
-}
-
-func (u *User) Valid() bool {
-	return u != nil && u.valid
-}
+func (u *User) ID() string  { return u.id }
+func (u *User) Valid() bool { return u != nil && u.valid }
 
 func (u *User) Assign(role *Role) error {
+	u.area.Lock()
+	defer u.area.Unlock()
+
 	if !u.Valid() {
 		return ErrUserInvalid
 	}
@@ -49,10 +46,14 @@ func (u *User) Assign(role *Role) error {
 		return ErrRoleAlreadyAssigned
 	}
 	u.roles.Add(role)
+	u.area.CreateUser(adapter.User{ID: u.id, RoleID: role.id})
 	return nil
 }
 
 func (u *User) Unassign(role *Role) error {
+	u.area.Lock()
+	defer u.area.Unlock()
+
 	if !u.Valid() {
 		return ErrUserInvalid
 	}
@@ -67,6 +68,9 @@ func (u *User) Unassign(role *Role) error {
 }
 
 func (u *User) IsAssign(role *Role) (bool, error) {
+	u.area.RLock()
+	defer u.area.RUnlock()
+
 	if !u.Valid() {
 		return false, ErrUserInvalid
 	}
@@ -76,21 +80,28 @@ func (u *User) IsAssign(role *Role) (bool, error) {
 	return u.roles.Has(role), nil
 }
 
-func (u *User) Enforce(resource Resource) (bool, error) {
+func (u *User) Enforce(res Resource) (bool, error) {
+	u.area.RLock()
+	defer u.area.RUnlock()
+
 	if !u.Valid() {
 		return false, ErrUserInvalid
 	}
 	return u.roles.Any(func(r *Role) bool {
-		ok, err := r.Enforce(resource)
+		ok, err := r.enforce(res)
 		return ok && err == nil
 	}), nil
 }
 
 func (u *User) Delete() error {
+	u.area.Lock()
+	defer u.area.Unlock()
+
 	if !u.Valid() {
 		return ErrUserInvalid
 	}
 	u.valid = false
 	u.roles.Clear()
+	u.area.DeleteUser(u.id)
 	return nil
 }

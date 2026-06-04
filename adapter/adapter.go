@@ -15,11 +15,11 @@ type Adapter interface {
 
 	// Role methods.
 	CreateRole(role Role) error
-	DeleteRole(roleID int64) error
+	DeleteRole(roleID string) error
 
 	// User methods.
 	CreateUser(user User) error
-	DeleteUser(userID int64) error
+	DeleteUser(userID string) error
 
 	// Policy methods.
 	CreatePolicy(policy Policy) error

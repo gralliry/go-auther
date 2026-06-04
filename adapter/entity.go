@@ -10,8 +10,7 @@ type User struct {
 }
 
 type Policy struct {
-	ID       int64
-	ParentID int64
+	ID int64
 
 	GrantorRoleID string
 	GranteeRoleID string
