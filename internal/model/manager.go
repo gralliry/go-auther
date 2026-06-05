@@ -1,9 +1,8 @@
 package model
 
 import (
-	"errors"
-
 	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/errors"
 	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
@@ -14,9 +13,11 @@ type Manager struct {
 	area *Area
 }
 
+// New creates a Manager by loading persisted state from the adapter. The root role
+// is always present with a /? policy.
 func New(adapter Adapter) (*Manager, error) {
 	if adapter == nil {
-		return nil, errors.New("adapter is nil")
+		return nil, errors.ErrAdapterRequired
 	}
 	area, err := NewArea(adapter)
 	if err != nil {
@@ -55,7 +56,8 @@ func New(adapter Adapter) (*Manager, error) {
 		m.users.Add(user)
 	}
 
-	rootPolicy := newPolicy(0, Resource("/**"), m.area)
+	rootPolicy := newPolicy(0, NewResource("/**"), m.area)
+	rootPolicy.parents = 1
 	rootRole.srcGrants.Add(rootPolicy)
 
 	// Build policies.
@@ -68,7 +70,7 @@ func New(adapter Adapter) (*Manager, error) {
 		if !exist {
 			continue
 		}
-		policy := newPolicy(info.ID, Resource(info.Resource), m.area)
+		policy := newPolicy(info.ID, NewResource(info.Resource), m.area)
 		grantor.tarGrants.Add(policy)
 		grantee.srcGrants.Add(policy)
 	}
@@ -93,7 +95,7 @@ func New(adapter Adapter) (*Manager, error) {
 		if policy == nil {
 			continue
 		}
-		res := Resource(info.Resource)
+		res := NewResource(info.Resource)
 		// Count parent policies in grantor's srcGrants that contain this resource.
 		grantor.srcGrants.Range(func(parent *Policy) {
 			if parent.contains(res) {
@@ -106,12 +108,13 @@ func New(adapter Adapter) (*Manager, error) {
 	return m, nil
 }
 
+// CreateRole creates a new role with the given ID and persists it.
 func (m *Manager) CreateRole(roleID string) (*Role, error) {
 	m.area.Lock()
 	defer m.area.Unlock()
 
 	if m.roles.HasByKey(roleID) {
-		return nil, errors.New("role already exists")
+		return nil, errors.ErrRoleExists
 	}
 	if err := m.area.CreateRole(adapter.Role{ID: roleID}); err != nil {
 		return nil, err
@@ -121,6 +124,7 @@ func (m *Manager) CreateRole(roleID string) (*Role, error) {
 	return role, nil
 }
 
+// GetRole looks up a role by ID. The second return value reports whether the role was found.
 func (m *Manager) GetRole(roleID string) (*Role, bool) {
 	m.area.RLock()
 	defer m.area.RUnlock()
@@ -129,12 +133,13 @@ func (m *Manager) GetRole(roleID string) (*Role, bool) {
 	return role, exist
 }
 
+// CreateUser creates a new user with the given ID and persists it.
 func (m *Manager) CreateUser(userID string) (*User, error) {
 	m.area.Lock()
 	defer m.area.Unlock()
 
 	if m.users.HasByKey(userID) {
-		return nil, errors.New("user already exists")
+		return nil, errors.ErrUserExists
 	}
 	if err := m.area.CreateUser(adapter.User{ID: userID}); err != nil {
 		return nil, err
@@ -144,6 +149,7 @@ func (m *Manager) CreateUser(userID string) (*User, error) {
 	return user, nil
 }
 
+// GetUser looks up a user by ID. The second return value reports whether the user was found.
 func (m *Manager) GetUser(userID string) (*User, bool) {
 	m.area.RLock()
 	defer m.area.RUnlock()

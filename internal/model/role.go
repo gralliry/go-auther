@@ -1,17 +1,9 @@
 package model
 
 import (
-	"errors"
-
 	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/errors"
 	"github.com/gralliry/go-auther/internal/pkg/set"
-)
-
-var (
-	ErrRoleInvalid      = errors.New("grantor role is invalid")
-	ErrGranteeInvalid   = errors.New("grantee role is invalid")
-	ErrRoleInsufficient = errors.New("insufficient permissions")
-	ErrRoleSelfGrant    = errors.New("self grant is not allowed")
 )
 
 type Role struct {
@@ -32,45 +24,51 @@ func newRole(id string, area *Area) *Role {
 	}
 }
 
-func (r *Role) ID() string  { return r.id }
+// ID returns the role's unique identifier.
+func (r *Role) ID() string { return r.id }
+
+// Valid reports whether the role is still active.
 func (r *Role) Valid() bool { return r != nil && r.valid }
 
-func (r *Role) Enforce(res Resource) (bool, error) {
+// Enforce checks whether the role has access to the given resource.
+func (r *Role) Enforce(res string) (bool, error) {
 	r.area.RLock()
 	defer r.area.RUnlock()
 	return r.enforce(res)
 }
 
-func (r *Role) enforce(res Resource) (bool, error) {
+func (r *Role) enforce(res string) (bool, error) {
 	if !r.Valid() {
-		return false, ErrRoleInvalid
+		return false, errors.ErrRoleInvalid
 	}
 	return r.srcGrants.Any(func(p *Policy) bool {
-		return p.contains(res)
+		return p.match(res)
 	}), nil
 }
 
-func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
+// Grant delegates a resource from this role to the grantee. The grantor must already
+// hold a policy that contains the resource. Self-grant is rejected. Returns the newly
+// created policy.
+func (r *Role) Grant(res *Resource, grantee *Role) (*Policy, error) {
 	r.area.Lock()
 	defer r.area.Unlock()
 
 	if !r.Valid() {
-		return nil, ErrRoleInvalid
+		return nil, errors.ErrRoleInvalid
 	}
 	if !grantee.Valid() {
-		return nil, ErrGranteeInvalid
+		return nil, errors.ErrGranteeInvalid
 	}
 	if r.id == grantee.id {
-		return nil, ErrRoleSelfGrant
+		return nil, errors.ErrRoleSelfGrant
 	}
 
-	// 遍历父母，检查是否有包含res的策略
 	parentPolicies := r.srcGrants.Filter(func(p *Policy) bool {
 		return p.contains(res)
 	})
 	parentNums := parentPolicies.Length()
 	if parentNums == 0 {
-		return nil, ErrRoleInsufficient
+		return nil, errors.ErrRoleInsufficient
 	}
 
 	childPolicies := grantee.srcGrants.Filter(func(p *Policy) bool {
@@ -82,7 +80,7 @@ func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
 
 	policy := &Policy{
 		id:       r.area.GenerateID(),
-		res:      res,
+		resource: res,
 		parents:  parentNums,
 		children: childPolicies,
 		area:     r.area,
@@ -104,7 +102,7 @@ func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
 
 	r.area.CreatePolicy(adapter.Policy{
 		ID:            policy.id,
-		Resource:      string(res),
+		Resource:      res.String(),
 		GrantorRoleID: r.id,
 		GranteeRoleID: grantee.id,
 	})
@@ -112,27 +110,30 @@ func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
 	return policy, nil
 }
 
+// Revoke revokes a policy previously granted by this role. The policy is removed
+// from the role's outgoing grants and cascaded to orphaned children.
 func (r *Role) Revoke(policy *Policy) error {
 	r.area.Lock()
 	defer r.area.Unlock()
 
 	if !r.Valid() {
-		return ErrRoleInvalid
+		return errors.ErrRoleInvalid
 	}
 	if !r.tarGrants.Has(policy) {
-		return ErrPolicyNotFound
+		return errors.ErrPolicyNotFound
 	}
 	r.tarGrants.Delete(policy)
 	policy.revoke()
 	return nil
 }
 
+// Delete marks the role as invalid and revokes all its incoming and outgoing policies.
 func (r *Role) Delete() error {
 	r.area.Lock()
 	defer r.area.Unlock()
 
 	if !r.Valid() {
-		return ErrRoleInvalid
+		return errors.ErrRoleInvalid
 	}
 	r.valid = false
 

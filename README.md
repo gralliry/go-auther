@@ -129,9 +129,9 @@ policy.Within(resource Resource) bool     // true if the target pattern contains
 | `/data/**` | Zero or more segments: `/data`, `/data/a/b/c` |
 | `/**` | Everything |
 
-The `*` wildcard matches exactly one path segment. The `**` wildcard matches zero or more segments. Matching uses zero-allocation iterative backtracking in `internal/pkg/match`.
+The `*` wildcard matches exactly one path segment. The `**` wildcard matches zero or more segments. Matching is inlined in `Resource.Match` with zero-allocation iterative segment comparison.
 
-The `Resource` type auto-normalizes on construction: empty string becomes `/`, missing leading slash is added, and `path.Clean` resolves `.` and `..`.
+The `Resource` type auto-normalizes on construction: `path.Clean` resolves `.` and `..`, leading `/` is stripped, and `**` is truncated to appear at most once at the last position.
 
 ## Persistence
 
@@ -195,59 +195,56 @@ The `internal/pkg/set` package provides `AutoCacheSet` and `AutoCacheMap` — ge
 
 ## Performance
 
-All measurements on i7-12700H (20 threads), Go 1.26, 5-run average. Enforcement and mutation benchmarks include lock overhead.
+All measurements on i7-12700H (20 threads), Go 1.26. Enforcement and mutation benchmarks include lock overhead.
 
 ### Glob matching
 
-| Case | Time/op |
-|---|---|
-| Exact match | ~1.4 ns |
-| Literal miss | ~4.0 ns |
-| Single wildcard `*` | ~33 ns |
-| Double wildcard `**` | ~35 ns |
-| Deep path `**` | ~67 ns |
-
-The matcher uses a split-path strategy: `**`-free patterns take a fast non-backtracking path; patterns containing `**` use iterative backtracking. `HasWildcard` and `HasDoubleStar` use `strings` SIMD intrinsics.
+| Case | Time/op | Alloc |
+|---|---|---|
+| Exact match | 26.7 ns | 0 B |
+| Literal miss | 24.9 ns | 0 B |
+| Single wildcard `*` | 20.4 ns | 0 B |
+| Double wildcard `**` | 15.4 ns | 0 B |
+| Deep path `**` | 22.2 ns | 0 B |
 
 ### Enforcement (role lookup + resource matching)
 
-| Scenario | Time/op |
-|---|---|
-| Exact match hit | ~57 ns |
-| Wildcard match hit | ~88 ns |
-| Literal miss (fast fail) | ~87 ns |
-| Root enforce (`/**`) | ~73 ns |
-| User enforce (user → role → policy) | ~128 ns |
-| Enforce with 20 policies scanned | ~343 ns |
+| Scenario | Time/op | Alloc |
+|---|---|---|
+| Exact match hit | 64.9 ns | 0 B |
+| Wildcard match hit | 59.5 ns | 0 B |
+| Literal miss (fast fail) | 57.3 ns | 0 B |
+| Root enforce (`/**`) | 43.4 ns | 0 B |
+| User enforce (user → role → policy) | 96.0 ns | 0 B |
+| Enforce with 20 policies scanned | 226 ns | 0 B |
 
 ### Permission modification
 
-| Scenario | Time/op |
-|---|---|
-| Create role | ~541 ns |
-| Grant | ~1,214 ns |
-| Revoke | ~619 ns |
-| Revoke with 3-level cascade | ~2,530 ns |
-| Assign user to role | ~551 ns |
-| Delete role (with cascade) | ~701 ns |
+| Scenario | Time/op | Alloc |
+|---|---|---|
+| Create role | 456 ns | 263 B |
+| Grant | 1640 ns | 975 B |
+| Revoke | 793 ns | 440 B |
+| Revoke with 3-level cascade | 2523 ns | 1584 B |
+| Assign user to role | 570 ns | 372 B |
+| Delete role (with cascade) | 515 ns | 0 B |
 
 ### Concurrent read-write contention
 
 4 goroutines sharing one `Area` (single `sync.RWMutex`).
 
-| Read/Write ratio | Time/op |
-|---|---|
-| 99% read + 1% write | ~255 ns |
-| 90% read + 10% write | ~837 ns |
-| 70% read + 30% write | ~1,052 ns |
-| 50% read + 50% write | ~1,323 ns |
-| 100% write | ~2,080 ns |
+| Read/Write ratio | Time/op | Alloc |
+|---|---|---|
+| 99% read + 1% write | 151 ns | 9 B |
+| 90% read + 10% write | 524 ns | 92 B |
+| 70% read + 30% write | 818 ns | 317 B |
+| 50% read + 50% write | 1076 ns | 487 B |
+| 100% write | 1813 ns | 871 B |
 
 ## Internal packages
 
 | Package | Purpose |
 |---|---|
-| `internal/pkg/match` | Iterative backtracking glob matcher |
 | `internal/pkg/set` | Generic set types including auto-cache collections |
 | `internal/pkg/algo` | `PruneTree` — DFS-based orphan node removal |
 | `internal/pkg/strutil` | Key normalization with SHA-256 hashing for long keys |

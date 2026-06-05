@@ -14,24 +14,7 @@ type (
 	Adapter  = adapter.Adapter
 )
 
-// NewResource creates a validated and normalized resource from a raw path.
-func NewResource(raw string) Resource {
-	return model.NewResource(raw)
-}
-
-// Sentinel errors.
 var (
-	ErrUserInvalid            = model.ErrUserInvalid
-	ErrRoleInvalid            = model.ErrRoleInvalid
-	ErrGranteeInvalid         = model.ErrGranteeInvalid
-	ErrRoleAlreadyAssigned    = model.ErrRoleAlreadyAssigned
-	ErrRoleNotAssigned        = model.ErrRoleNotAssigned
-	ErrRoleSelfGrant          = model.ErrRoleSelfGrant
-	ErrRoleInsufficient       = model.ErrRoleInsufficient
-	ErrPolicyNotFound         = model.ErrPolicyNotFound
+	NewManager  = model.New
+	NewResource = model.NewResource
 )
-
-// New creates a new Manager with the given adapter.
-func New(adapter Adapter) (*Manager, error) {
-	return model.New(adapter)
-}

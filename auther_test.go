@@ -4,11 +4,24 @@ import (
 	"testing"
 
 	"github.com/gralliry/go-auther/adapter/empty"
+	"github.com/gralliry/go-auther/errors"
+)
+
+// Sentinel errors.
+var (
+	ErrUserInvalid         = errors.ErrUserInvalid
+	ErrRoleInvalid         = errors.ErrRoleInvalid
+	ErrGranteeInvalid      = errors.ErrGranteeInvalid
+	ErrRoleAlreadyAssigned = errors.ErrRoleAlreadyAssigned
+	ErrRoleNotAssigned     = errors.ErrRoleNotAssigned
+	ErrRoleSelfGrant       = errors.ErrRoleSelfGrant
+	ErrRoleInsufficient    = errors.ErrRoleInsufficient
+	ErrPolicyNotFound      = errors.ErrPolicyNotFound
 )
 
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
-	m, err := New(empty.New())
+	m, err := NewManager(empty.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +42,7 @@ func TestGrantAndEnforce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := admin.Enforce(NewResource("/user/create"))
+	ok, err := admin.Enforce("/user/create")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +50,7 @@ func TestGrantAndEnforce(t *testing.T) {
 		t.Error("admin should have access to /user/create")
 	}
 
-	ok, err = admin.Enforce(NewResource("/data/read"))
+	ok, err = admin.Enforce("/data/read")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,12 +68,12 @@ func TestMultiLevelDelegation(t *testing.T) {
 	root.Grant(NewResource("/user/*"), admin)
 	admin.Grant(NewResource("/user/profile"), editor)
 
-	ok, _ := editor.Enforce(NewResource("/user/profile"))
+	ok, _ := editor.Enforce("/user/profile")
 	if !ok {
 		t.Error("editor should have access to /user/profile")
 	}
 
-	ok, _ = editor.Enforce(NewResource("/user/create"))
+	ok, _ = editor.Enforce("/user/create")
 	if ok {
 		t.Error("editor should NOT have access to /user/create")
 	}
@@ -72,7 +85,7 @@ func TestRevokeSinglePolicy(t *testing.T) {
 	admin, _ := m.CreateRole("admin")
 
 	policy, _ := root.Grant(NewResource("/user/*"), admin)
-	ok, _ := admin.Enforce(NewResource("/user/create"))
+	ok, _ := admin.Enforce("/user/create")
 	if !ok {
 		t.Fatal("admin should have access before revoke")
 	}
@@ -82,7 +95,7 @@ func TestRevokeSinglePolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, _ = admin.Enforce(NewResource("/user/create"))
+	ok, _ = admin.Enforce("/user/create")
 	if ok {
 		t.Error("admin should NOT have access after revoke")
 	}
@@ -97,18 +110,18 @@ func TestRevokeCascade(t *testing.T) {
 	p, _ := root.Grant(NewResource("/user/*"), admin)
 	admin.Grant(NewResource("/user/profile"), editor)
 
-	ok, _ := editor.Enforce(NewResource("/user/profile"))
+	ok, _ := editor.Enforce("/user/profile")
 	if !ok {
 		t.Fatal("editor should have access before revoke")
 	}
 
 	root.Revoke(p)
 
-	ok, _ = admin.Enforce(NewResource("/user/create"))
+	ok, _ = admin.Enforce("/user/create")
 	if ok {
 		t.Error("admin should NOT have access after revoke")
 	}
-	ok, _ = editor.Enforce(NewResource("/user/profile"))
+	ok, _ = editor.Enforce("/user/profile")
 	if ok {
 		t.Error("editor should NOT have access after cascade revoke")
 	}
@@ -125,14 +138,14 @@ func TestRevokeDeepCascade(t *testing.T) {
 	a.Grant(NewResource("/data/reports/*"), b)
 	b.Grant(NewResource("/data/reports/q1"), c)
 
-	ok, _ := c.Enforce(NewResource("/data/reports/q1"))
+	ok, _ := c.Enforce("/data/reports/q1")
 	if !ok {
 		t.Fatal("c should have access before revoke")
 	}
 
 	root.Revoke(p)
 
-	ok, _ = c.Enforce(NewResource("/data/reports/q1"))
+	ok, _ = c.Enforce("/data/reports/q1")
 	if ok {
 		t.Error("c should NOT have access after deep cascade revoke")
 	}
@@ -147,7 +160,7 @@ func TestRoleDeleteCascade(t *testing.T) {
 	root.Grant(NewResource("/user/*"), admin)
 	admin.Grant(NewResource("/user/profile"), editor)
 
-	ok, _ := editor.Enforce(NewResource("/user/profile"))
+	ok, _ := editor.Enforce("/user/profile")
 	if !ok {
 		t.Fatal("editor should have access before delete")
 	}
@@ -158,7 +171,7 @@ func TestRoleDeleteCascade(t *testing.T) {
 		t.Error("admin should be invalid after delete")
 	}
 
-	ok, _ = editor.Enforce(NewResource("/user/profile"))
+	ok, _ = editor.Enforce("/user/profile")
 	if ok {
 		t.Error("editor should NOT have access after admin deleted")
 	}
@@ -213,12 +226,12 @@ func TestRevokeIndependentBranchUnaffected(t *testing.T) {
 
 	root.Revoke(p1)
 
-	ok, _ := editor.Enforce(NewResource("/user/profile"))
+	ok, _ := editor.Enforce("/user/profile")
 	if ok {
 		t.Error("editor should NOT have /user/profile after cascade")
 	}
 
-	ok, _ = editor.Enforce(NewResource("/data/read"))
+	ok, _ = editor.Enforce("/data/read")
 	if !ok {
 		t.Error("editor should still have /data/read (independent branch)")
 	}
@@ -232,7 +245,7 @@ func TestEnforceDeletedRole(t *testing.T) {
 	root.Grant(NewResource("/user/*"), admin)
 	admin.Delete()
 
-	_, err := admin.Enforce(NewResource("/user/create"))
+	_, err := admin.Enforce("/user/create")
 	if err != ErrRoleInvalid {
 		t.Errorf("expected ErrRoleInvalid, got %v", err)
 	}
@@ -259,12 +272,12 @@ func TestUserAssignAndEnforce(t *testing.T) {
 	}
 	alice.Assign(admin)
 
-	ok, _ := alice.Enforce(NewResource("/user/create"))
+	ok, _ := alice.Enforce("/user/create")
 	if !ok {
 		t.Error("alice should have access to /user/create via admin role")
 	}
 
-	ok, _ = alice.Enforce(NewResource("/data/read"))
+	ok, _ = alice.Enforce("/data/read")
 	if ok {
 		t.Error("alice should NOT have access to /data/read")
 	}
@@ -282,7 +295,7 @@ func TestUserUnassign(t *testing.T) {
 
 	alice.Unassign(admin)
 
-	ok, _ := alice.Enforce(NewResource("/user/create"))
+	ok, _ := alice.Enforce("/user/create")
 	if ok {
 		t.Error("alice should NOT have access after unassign")
 	}
@@ -303,7 +316,7 @@ func TestUserDelete(t *testing.T) {
 		t.Error("alice should be invalid after delete")
 	}
 
-	_, err := alice.Enforce(NewResource("/user/create"))
+	_, err := alice.Enforce("/user/create")
 	if err != ErrUserInvalid {
 		t.Errorf("expected ErrUserInvalid, got %v", err)
 	}
@@ -340,12 +353,12 @@ func TestGrantNarrowerDelegation(t *testing.T) {
 	admin.Grant(NewResource("/user/profile"), editor)
 
 	// editor can access /user/profile (within the delegated scope)
-	ok, _ := editor.Enforce(NewResource("/user/profile"))
+	ok, _ := editor.Enforce("/user/profile")
 	if !ok {
 		t.Error("editor should have /user/profile")
 	}
 	// editor cannot access a wider path (only has /user/profile, not /user/*)
-	ok, _ = editor.Enforce(NewResource("/user/create"))
+	ok, _ = editor.Enforce("/user/create")
 	if ok {
 		t.Error("editor should NOT have /user/create (only has /user/profile)")
 	}
@@ -355,11 +368,11 @@ func TestRootEnforceWildcard(t *testing.T) {
 	m := newTestManager(t)
 	root, _ := m.GetRole("root")
 
-	ok, _ := root.Enforce(NewResource("/anything"))
+	ok, _ := root.Enforce("/anything")
 	if !ok {
 		t.Error("root should match /**")
 	}
-	ok, _ = root.Enforce(NewResource("/deep/nested/path"))
+	ok, _ = root.Enforce("/deep/nested/path")
 	if !ok {
 		t.Error("root should match any path via /**")
 	}
@@ -378,17 +391,17 @@ func TestUserMultipleRoles(t *testing.T) {
 	alice.Assign(admin)
 	alice.Assign(editor)
 
-	ok, _ := alice.Enforce(NewResource("/user/create"))
+	ok, _ := alice.Enforce("/user/create")
 	if !ok {
 		t.Error("alice should have /user/create via admin")
 	}
 
-	ok, _ = alice.Enforce(NewResource("/data/read"))
+	ok, _ = alice.Enforce("/data/read")
 	if !ok {
 		t.Error("alice should have /data/read via editor")
 	}
 
-	ok, _ = alice.Enforce(NewResource("/reports/q1"))
+	ok, _ = alice.Enforce("/reports/q1")
 	if ok {
 		t.Error("alice should NOT have /reports/q1 (no role grants it)")
 	}
@@ -497,7 +510,7 @@ func TestUserEnforceNoRoles(t *testing.T) {
 	m := newTestManager(t)
 	alice, _ := m.CreateUser("alice")
 
-	ok, _ := alice.Enforce(NewResource("/anything"))
+	ok, _ := alice.Enforce("/anything")
 	if ok {
 		t.Error("alice with no roles should not have access")
 	}
@@ -525,11 +538,11 @@ func TestExactMatchVsWildcard(t *testing.T) {
 
 	root.Grant(NewResource("/user/create"), admin)
 
-	ok, _ := admin.Enforce(NewResource("/user/create"))
+	ok, _ := admin.Enforce("/user/create")
 	if !ok {
 		t.Error("admin should have exact match")
 	}
-	ok, _ = admin.Enforce(NewResource("/user/delete"))
+	ok, _ = admin.Enforce("/user/delete")
 	if ok {
 		t.Error("admin should NOT have /user/delete")
 	}
@@ -541,13 +554,13 @@ func TestResourceNormalization(t *testing.T) {
 	admin, _ := m.CreateRole("admin")
 
 	root.Grant(NewResource("user/create"), admin)
-	ok, _ := admin.Enforce(NewResource("/user/create"))
+	ok, _ := admin.Enforce("/user/create")
 	if !ok {
 		t.Error("no-slash path should be normalized to /user/create")
 	}
 
 	root.Grant(NewResource("/user//profile"), admin)
-	ok, _ = admin.Enforce(NewResource("/user/profile"))
+	ok, _ = admin.Enforce("/user/profile")
 	if !ok {
 		t.Error("double-slash should be normalized")
 	}
@@ -575,7 +588,7 @@ func TestDAGMultiParentSurvivesPartialRevoke(t *testing.T) {
 	roleB.Grant(NewResource("/a/*"), roleC)
 
 	// Verify D has /a/b before revoke.
-	ok, _ := roleD.Enforce(NewResource("/a/b"))
+	ok, _ := roleD.Enforce("/a/b")
 	if !ok {
 		t.Fatal("D should have /a/b before revoke")
 	}
@@ -584,13 +597,13 @@ func TestDAGMultiParentSurvivesPartialRevoke(t *testing.T) {
 	roleA.Revoke(pAC)
 
 	// C should still have /a/* via B.
-	ok, _ = roleC.Enforce(NewResource("/a/b"))
+	ok, _ = roleC.Enforce("/a/b")
 	if !ok {
 		t.Error("C should still have /a/b via B after A revokes")
 	}
 
 	// D should still have /a/b (C still has /a/* from B, so the delegation chain survives).
-	ok, _ = roleD.Enforce(NewResource("/a/b"))
+	ok, _ = roleD.Enforce("/a/b")
 	if !ok {
 		t.Error("D should still have /a/b after partial revoke")
 	}

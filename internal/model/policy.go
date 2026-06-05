@@ -1,42 +1,46 @@
 package model
 
 import (
-	"errors"
-
 	"github.com/gralliry/go-auther/internal/pkg/set"
-)
-
-var (
-	ErrPolicyNotFound = errors.New("policy not found")
 )
 
 type Policy struct {
 	id       int64
-	res      Resource
+	resource *Resource
 	parents  int
 	children *set.AutoCacheSet[*Policy]
 	area     *Area
 }
 
-func newPolicy(id int64, res Resource, area *Area) *Policy {
+func newPolicy(id int64, resource *Resource, area *Area) *Policy {
 	return &Policy{
 		id:       id,
 		children: set.NewAutoCacheSet[*Policy](),
-		res:      res,
+		resource: resource,
 		area:     area,
 	}
 }
 
-func (p *Policy) ID() int64        { return p.id }
-func (p *Policy) Valid() bool      { return p != nil && (p.parents > 0 || p.id == 0) }
-func (p *Policy) Resource() string { return string(p.res) }
+// ID returns the policy's unique snowflake identifier.
+func (p *Policy) ID() int64 { return p.id }
 
-func (p *Policy) contains(target Resource) bool {
-	return p.res.Match(target)
+// Valid reports whether the policy is still active. A policy is valid if it has
+// at least one active parent, or if it is the root policy (id == 0).
+func (p *Policy) Valid() bool { return p != nil && p.parents > 0 }
+
+// Resource returns the resource pattern this policy grants.
+func (p *Policy) Resource() string { return p.resource.String() }
+
+func (p *Policy) contains(target *Resource) bool {
+	return p.resource.Match(target.raw)
 }
 
-func (p *Policy) within(pattern Resource) bool {
-	return pattern.Match(p.res)
+func (p *Policy) within(pattern *Resource) bool {
+	return pattern.Match(p.resource.raw)
+}
+
+func (p *Policy) match(pattern string) bool {
+	return p.resource.Match(pattern)
 }
 
 // revoke invalidates this policy and cascades to orphaned children.

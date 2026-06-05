@@ -17,6 +17,7 @@ type Area struct {
 	node *snowflake.Node
 }
 
+// NewArea creates an Area initialized with the given adapter and a snowflake node.
 func NewArea(adapter Adapter) (*Area, error) {
 	node, err := snowflake.NewNode(1)
 	if err != nil {
@@ -28,6 +29,7 @@ func NewArea(adapter Adapter) (*Area, error) {
 	}, nil
 }
 
+// GenerateID returns a globally unique snowflake ID for new policies.
 func (a *Area) GenerateID() int64 {
 	return a.node.Generate().Int64()
 }
