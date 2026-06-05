@@ -8,12 +8,10 @@ import (
 )
 
 var (
-	ErrRoleInvalid          = errors.New("invalid role")
-	ErrRoleAlreadyExist     = errors.New("role already exists")
-	ErrRoleNotFound         = errors.New("role not found")
-	ErrRoleInsufficient     = errors.New("insufficient role")
-	ErrRoleInvalidHierarchy = errors.New("invalid role hierarchy")
-	ErrRoleSelfGrant        = errors.New("self grant is not allowed")
+	ErrRoleInvalid      = errors.New("grantor role is invalid")
+	ErrGranteeInvalid   = errors.New("grantee role is invalid")
+	ErrRoleInsufficient = errors.New("insufficient permissions")
+	ErrRoleSelfGrant    = errors.New("self grant is not allowed")
 )
 
 type Role struct {
@@ -60,29 +58,33 @@ func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
 		return nil, ErrRoleInvalid
 	}
 	if !grantee.Valid() {
-		return nil, ErrRoleInvalid
+		return nil, ErrGranteeInvalid
 	}
 	if r.id == grantee.id {
 		return nil, ErrRoleSelfGrant
 	}
 
+	// 遍历父母，检查是否有包含res的策略
 	parentPolicies := r.srcGrants.Filter(func(p *Policy) bool {
 		return p.contains(res)
 	})
-	if parentPolicies.Length() == 0 {
+	parentNums := parentPolicies.Length()
+	if parentNums == 0 {
 		return nil, ErrRoleInsufficient
 	}
 
 	childPolicies := grantee.srcGrants.Filter(func(p *Policy) bool {
 		return p.within(res)
 	})
+	subPolicies := grantee.tarGrants.Filter(func(p *Policy) bool {
+		return p.within(res)
+	})
 
 	policy := &Policy{
 		id:       r.area.GenerateID(),
 		res:      res,
-		parents:  parentPolicies,
+		parents:  parentNums,
 		children: childPolicies,
-		valid:    true,
 		area:     r.area,
 	}
 
@@ -90,7 +92,11 @@ func (r *Role) Grant(res Resource, grantee *Role) (*Policy, error) {
 		parent.children.Add(policy)
 	})
 	childPolicies.Range(func(child *Policy) {
-		child.parents.Add(policy)
+		child.parents++
+	})
+	subPolicies.Range(func(sub *Policy) {
+		policy.children.Add(sub)
+		sub.parents++
 	})
 
 	r.tarGrants.Add(policy)

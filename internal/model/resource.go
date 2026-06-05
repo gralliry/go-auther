@@ -32,5 +32,9 @@ func (r Resource) Match(target Resource) bool {
 	if !match.HasWildcard(s) {
 		return false
 	}
-	return match.MatchGlob(s, string(target))
+	t := string(target)
+	if match.HasDoubleStar(s) {
+		return match.MatchGlob(s, t)
+	}
+	return match.MatchSimple(s, t)
 }

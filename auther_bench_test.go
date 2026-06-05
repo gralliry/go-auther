@@ -94,6 +94,45 @@ func BenchmarkEnforceLiteralMiss(b *testing.B) {
 	}
 }
 
+func BenchmarkEnforceRoot(b *testing.B) {
+	m, _ := New(empty.New())
+	root, _ := m.GetRole("root")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchBool, _ = root.Enforce(NewResource("/anything"))
+	}
+}
+
+func BenchmarkEnforceUser(b *testing.B) {
+	m, _ := New(empty.New())
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+	root.Grant(NewResource("/user/*"), admin)
+	alice, _ := m.CreateUser("alice")
+	alice.Assign(admin)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchBool, _ = alice.Enforce(NewResource("/user/create"))
+	}
+}
+
+func BenchmarkEnforceManyPolicies(b *testing.B) {
+	m, _ := New(empty.New())
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+	for i := 0; i < 20; i++ {
+		id := string(rune('a' + i))
+		root.Grant(NewResource("/"+id+"/*"), admin)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchBool, _ = admin.Enforce(NewResource("/k/xyz"))
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Mutation
 // ---------------------------------------------------------------------------
@@ -136,6 +175,44 @@ func BenchmarkRevokeCascade3Level(b *testing.B) {
 		roleA.Grant(NewResource("/data/reports/*"), roleB)
 		roleB.Grant(NewResource("/data/reports/q1"), roleC)
 		root.Revoke(p)
+	}
+}
+
+func BenchmarkRoleDelete(b *testing.B) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		m, _ := New(empty.New())
+		root, _ := m.GetRole("root")
+		admin, _ := m.CreateRole("admin")
+		editor, _ := m.CreateRole("editor")
+		root.Grant(NewResource("/user/*"), admin)
+		admin.Grant(NewResource("/user/profile"), editor)
+		b.StartTimer()
+
+		admin.Delete()
+	}
+}
+
+func BenchmarkUserAssign(b *testing.B) {
+	m, _ := New(empty.New())
+	admin, _ := m.CreateRole("admin")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id := string(rune('A'+i%26)) + string(rune('0'+i/26))
+		alice, _ := m.CreateUser(id)
+		alice.Assign(admin)
+	}
+}
+
+func BenchmarkCreateRole(b *testing.B) {
+	m, _ := New(empty.New())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id := string(rune('A'+i%26)) + string(rune('0'+i/26))
+		m.CreateRole(id)
 	}
 }
 

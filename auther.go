@@ -23,6 +23,7 @@ func NewResource(raw string) Resource {
 var (
 	ErrUserInvalid            = model.ErrUserInvalid
 	ErrRoleInvalid            = model.ErrRoleInvalid
+	ErrGranteeInvalid         = model.ErrGranteeInvalid
 	ErrRoleAlreadyAssigned    = model.ErrRoleAlreadyAssigned
 	ErrRoleNotAssigned        = model.ErrRoleNotAssigned
 	ErrRoleSelfGrant          = model.ErrRoleSelfGrant

@@ -7,10 +7,6 @@ import (
 	"github.com/gralliry/go-auther/internal/pkg/set"
 )
 
-type (
-	Adapter = adapter.Adapter
-)
-
 type Manager struct {
 	roles *set.AutoCacheMap[string, *Role]
 	users *set.AutoCacheMap[string, *User]
@@ -75,6 +71,36 @@ func New(adapter Adapter) (*Manager, error) {
 		policy := newPolicy(info.ID, Resource(info.Resource), m.area)
 		grantor.tarGrants.Add(policy)
 		grantee.srcGrants.Add(policy)
+	}
+
+	// Rebuild DAG: compute parents count and children links from containment.
+	for _, info := range data.Policy {
+		grantor, exist := m.roles.Get(info.GrantorRoleID)
+		if !exist {
+			continue
+		}
+		grantee, exist := m.roles.Get(info.GranteeRoleID)
+		if !exist {
+			continue
+		}
+		// Find this policy by ID from grantee's srcGrants (it was just added).
+		var policy *Policy
+		grantee.srcGrants.Range(func(p *Policy) {
+			if p.id == info.ID {
+				policy = p
+			}
+		})
+		if policy == nil {
+			continue
+		}
+		res := Resource(info.Resource)
+		// Count parent policies in grantor's srcGrants that contain this resource.
+		grantor.srcGrants.Range(func(parent *Policy) {
+			if parent.contains(res) {
+				policy.parents++
+				parent.children.Add(policy)
+			}
+		})
 	}
 
 	return m, nil

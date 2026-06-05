@@ -7,33 +7,28 @@ import (
 )
 
 var (
-	ErrPolicyInvalid  = errors.New("policy invalid")
-	ErrPolicyNotMatch = errors.New("policy not match")
 	ErrPolicyNotFound = errors.New("policy not found")
 )
 
 type Policy struct {
 	id       int64
 	res      Resource
-	parents  *set.AutoCacheSet[*Policy]
+	parents  int
 	children *set.AutoCacheSet[*Policy]
-	valid    bool
 	area     *Area
 }
 
 func newPolicy(id int64, res Resource, area *Area) *Policy {
 	return &Policy{
 		id:       id,
-		parents:  set.NewAutoCacheSet[*Policy](),
 		children: set.NewAutoCacheSet[*Policy](),
 		res:      res,
-		valid:    true,
 		area:     area,
 	}
 }
 
-func (p *Policy) ID() int64     { return p.id }
-func (p *Policy) Valid() bool   { return p != nil && p.valid }
+func (p *Policy) ID() int64        { return p.id }
+func (p *Policy) Valid() bool      { return p != nil && (p.parents > 0 || p.id == 0) }
 func (p *Policy) Resource() string { return string(p.res) }
 
 func (p *Policy) contains(target Resource) bool {
@@ -45,21 +40,16 @@ func (p *Policy) within(pattern Resource) bool {
 }
 
 // revoke invalidates this policy and cascades to orphaned children.
-// The caller must hold p.area.mutex (write lock).
+// The caller must hold area write lock.
 func (p *Policy) revoke() {
-	if !p.Valid() {
+	if p.parents < 0 {
 		return
 	}
-	p.valid = false
+	p.parents = -1
 	p.area.DeletePolicy(p.id)
-	p.parents.Range(func(parent *Policy) {
-		parent.children.Delete(p)
-	})
 	p.children.Range(func(child *Policy) {
-		child.parents.Delete(p)
-		if !child.parents.Any(func(pp *Policy) bool {
-			return pp.Valid()
-		}) {
+		child.parents--
+		if child.parents == 0 {
 			child.revoke()
 		}
 	})

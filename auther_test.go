@@ -308,3 +308,290 @@ func TestUserDelete(t *testing.T) {
 		t.Errorf("expected ErrUserInvalid, got %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Additional tests
+// ---------------------------------------------------------------------------
+
+func TestGrantToDeletedRole(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+	editor, _ := m.CreateRole("editor")
+
+	root.Grant(NewResource("/user/*"), admin)
+	editor.Delete()
+
+	_, err := admin.Grant(NewResource("/user/profile"), editor)
+	if err != ErrGranteeInvalid {
+		t.Errorf("expected ErrGranteeInvalid, got %v", err)
+	}
+}
+
+func TestGrantNarrowerDelegation(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+	editor, _ := m.CreateRole("editor")
+
+	// admin has /user/* from root
+	root.Grant(NewResource("/user/*"), admin)
+	// admin delegates a narrower subset to editor
+	admin.Grant(NewResource("/user/profile"), editor)
+
+	// editor can access /user/profile (within the delegated scope)
+	ok, _ := editor.Enforce(NewResource("/user/profile"))
+	if !ok {
+		t.Error("editor should have /user/profile")
+	}
+	// editor cannot access a wider path (only has /user/profile, not /user/*)
+	ok, _ = editor.Enforce(NewResource("/user/create"))
+	if ok {
+		t.Error("editor should NOT have /user/create (only has /user/profile)")
+	}
+}
+
+func TestRootEnforceWildcard(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+
+	ok, _ := root.Enforce(NewResource("/anything"))
+	if !ok {
+		t.Error("root should match /**")
+	}
+	ok, _ = root.Enforce(NewResource("/deep/nested/path"))
+	if !ok {
+		t.Error("root should match any path via /**")
+	}
+}
+
+func TestUserMultipleRoles(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+	editor, _ := m.CreateRole("editor")
+
+	root.Grant(NewResource("/user/*"), admin)
+	root.Grant(NewResource("/data/*"), editor)
+
+	alice, _ := m.CreateUser("alice")
+	alice.Assign(admin)
+	alice.Assign(editor)
+
+	ok, _ := alice.Enforce(NewResource("/user/create"))
+	if !ok {
+		t.Error("alice should have /user/create via admin")
+	}
+
+	ok, _ = alice.Enforce(NewResource("/data/read"))
+	if !ok {
+		t.Error("alice should have /data/read via editor")
+	}
+
+	ok, _ = alice.Enforce(NewResource("/reports/q1"))
+	if ok {
+		t.Error("alice should NOT have /reports/q1 (no role grants it)")
+	}
+}
+
+func TestUserIsAssign(t *testing.T) {
+	m := newTestManager(t)
+	admin, _ := m.CreateRole("admin")
+	alice, _ := m.CreateUser("alice")
+
+	ok, _ := alice.IsAssign(admin)
+	if ok {
+		t.Error("alice should not have admin assigned yet")
+	}
+
+	alice.Assign(admin)
+
+	ok, _ = alice.IsAssign(admin)
+	if !ok {
+		t.Error("alice should have admin assigned")
+	}
+}
+
+func TestUserIsAssignInvalid(t *testing.T) {
+	m := newTestManager(t)
+	admin, _ := m.CreateRole("admin")
+	alice, _ := m.CreateUser("alice")
+
+	alice.Delete()
+
+	_, err := alice.IsAssign(admin)
+	if err != ErrUserInvalid {
+		t.Errorf("expected ErrUserInvalid, got %v", err)
+	}
+}
+
+func TestDuplicateUser(t *testing.T) {
+	m := newTestManager(t)
+	m.CreateUser("bob")
+	_, err := m.CreateUser("bob")
+	if err == nil {
+		t.Error("expected error for duplicate user")
+	}
+}
+
+func TestRoleDeleteTwice(t *testing.T) {
+	m := newTestManager(t)
+	admin, _ := m.CreateRole("admin")
+	admin.Delete()
+
+	err := admin.Delete()
+	if err != ErrRoleInvalid {
+		t.Errorf("expected ErrRoleInvalid on second delete, got %v", err)
+	}
+}
+
+func TestUserDeleteTwice(t *testing.T) {
+	m := newTestManager(t)
+	alice, _ := m.CreateUser("alice")
+	alice.Delete()
+
+	err := alice.Delete()
+	if err != ErrUserInvalid {
+		t.Errorf("expected ErrUserInvalid on second delete, got %v", err)
+	}
+}
+
+func TestRoleAlreadyAssigned(t *testing.T) {
+	m := newTestManager(t)
+	admin, _ := m.CreateRole("admin")
+	alice, _ := m.CreateUser("alice")
+
+	alice.Assign(admin)
+
+	err := alice.Assign(admin)
+	if err != ErrRoleAlreadyAssigned {
+		t.Errorf("expected ErrRoleAlreadyAssigned, got %v", err)
+	}
+}
+
+func TestRoleNotAssigned(t *testing.T) {
+	m := newTestManager(t)
+	admin, _ := m.CreateRole("admin")
+	alice, _ := m.CreateUser("alice")
+
+	err := alice.Unassign(admin)
+	if err != ErrRoleNotAssigned {
+		t.Errorf("expected ErrRoleNotAssigned, got %v", err)
+	}
+}
+
+func TestRoleDeletedCannotBeAssigned(t *testing.T) {
+	m := newTestManager(t)
+	admin, _ := m.CreateRole("admin")
+	alice, _ := m.CreateUser("alice")
+
+	admin.Delete()
+
+	err := alice.Assign(admin)
+	if err != ErrRoleInvalid {
+		t.Errorf("expected ErrRoleInvalid, got %v", err)
+	}
+}
+
+func TestUserEnforceNoRoles(t *testing.T) {
+	m := newTestManager(t)
+	alice, _ := m.CreateUser("alice")
+
+	ok, _ := alice.Enforce(NewResource("/anything"))
+	if ok {
+		t.Error("alice with no roles should not have access")
+	}
+}
+
+func TestNarrowerCannotGrantWider(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+	editor, _ := m.CreateRole("editor")
+
+	root.Grant(NewResource("/user/profile"), admin)
+
+	// admin has /user/profile but tries to grant /user/* (wider) to editor
+	_, err := admin.Grant(NewResource("/user/*"), editor)
+	if err != ErrRoleInsufficient {
+		t.Errorf("expected ErrRoleInsufficient, got %v", err)
+	}
+}
+
+func TestExactMatchVsWildcard(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+
+	root.Grant(NewResource("/user/create"), admin)
+
+	ok, _ := admin.Enforce(NewResource("/user/create"))
+	if !ok {
+		t.Error("admin should have exact match")
+	}
+	ok, _ = admin.Enforce(NewResource("/user/delete"))
+	if ok {
+		t.Error("admin should NOT have /user/delete")
+	}
+}
+
+func TestResourceNormalization(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	admin, _ := m.CreateRole("admin")
+
+	root.Grant(NewResource("user/create"), admin)
+	ok, _ := admin.Enforce(NewResource("/user/create"))
+	if !ok {
+		t.Error("no-slash path should be normalized to /user/create")
+	}
+
+	root.Grant(NewResource("/user//profile"), admin)
+	ok, _ = admin.Enforce(NewResource("/user/profile"))
+	if !ok {
+		t.Error("double-slash should be normalized")
+	}
+}
+
+func TestDAGMultiParentSurvivesPartialRevoke(t *testing.T) {
+	m := newTestManager(t)
+	root, _ := m.GetRole("root")
+	roleA, _ := m.CreateRole("A")
+	roleB, _ := m.CreateRole("B")
+	roleC, _ := m.CreateRole("C")
+	roleD, _ := m.CreateRole("D")
+
+	// A grants /a/* to B.
+	root.Grant(NewResource("/a/*"), roleA)
+	roleA.Grant(NewResource("/a/*"), roleB)
+
+	// A grants /a/* to C.
+	pAC, _ := roleA.Grant(NewResource("/a/*"), roleC)
+
+	// C grants /a/b to D (narrower delegation).
+	roleC.Grant(NewResource("/a/b"), roleD)
+
+	// B also grants /a/* to C, so C now has /a/* from both A and B.
+	roleB.Grant(NewResource("/a/*"), roleC)
+
+	// Verify D has /a/b before revoke.
+	ok, _ := roleD.Enforce(NewResource("/a/b"))
+	if !ok {
+		t.Fatal("D should have /a/b before revoke")
+	}
+
+	// A revokes its /a/* grant to C.
+	roleA.Revoke(pAC)
+
+	// C should still have /a/* via B.
+	ok, _ = roleC.Enforce(NewResource("/a/b"))
+	if !ok {
+		t.Error("C should still have /a/b via B after A revokes")
+	}
+
+	// D should still have /a/b (C still has /a/* from B, so the delegation chain survives).
+	ok, _ = roleD.Enforce(NewResource("/a/b"))
+	if !ok {
+		t.Error("D should still have /a/b after partial revoke")
+	}
+}

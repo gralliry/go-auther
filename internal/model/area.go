@@ -4,6 +4,11 @@ import (
 	"sync"
 
 	"github.com/bwmarrin/snowflake"
+	"github.com/gralliry/go-auther/adapter"
+)
+
+type (
+	Adapter = adapter.Adapter
 )
 
 type Area struct {

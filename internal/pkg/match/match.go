@@ -1,6 +1,60 @@
 package match
 
+import "strings"
+
 const noStar = -1
+
+// HasWildcard reports whether the pattern contains a '*' wildcard.
+func HasWildcard(p string) bool {
+	return strings.ContainsRune(p, '*')
+}
+
+// HasDoubleStar reports whether the pattern contains a '**' wildcard.
+func HasDoubleStar(p string) bool {
+	return strings.Contains(p, "**")
+}
+
+// MatchSimple matches patterns that contain only single '*' wildcards (no '**').
+// No backtracking needed — a single pass through segments suffices.
+func MatchSimple(p, t string) bool {
+	pi, ti := 0, 0
+
+	for {
+		// Skip leading slashes.
+		for pi < len(p) && p[pi] == '/' {
+			pi++
+		}
+		for ti < len(t) && t[ti] == '/' {
+			ti++
+		}
+
+		if pi >= len(p) {
+			return ti >= len(t)
+		}
+		if ti >= len(t) {
+			return pi >= len(p)
+		}
+
+		// Extract pattern segment.
+		ps := pi
+		for pi < len(p) && p[pi] != '/' {
+			pi++
+		}
+		pSeg := p[ps:pi]
+
+		// Extract target segment.
+		ts := ti
+		for ti < len(t) && t[ti] != '/' {
+			ti++
+		}
+		tSeg := t[ts:ti]
+
+		if pSeg == "*" || pSeg == tSeg {
+			continue
+		}
+		return false
+	}
+}
 
 // MatchGlob performs segment-by-segment iterative matching.
 // * matches one segment, ** matches zero or more.
@@ -89,14 +143,4 @@ func tailGlobStar(p string, pi int) bool {
 		return false
 	}
 	return true
-}
-
-// HasWildcard reports whether the pattern contains a '*' wildcard.
-func HasWildcard(p string) bool {
-	for i := 0; i < len(p); i++ {
-		if p[i] == '*' {
-			return true
-		}
-	}
-	return false
 }

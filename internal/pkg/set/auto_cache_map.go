@@ -68,6 +68,7 @@ func (s *AutoCacheMap[K, V]) traverse(fn func(V)) {
 	for key, val := range s.data {
 		if !val.Valid() {
 			delete(s.data, key)
+			continue
 		}
 		fn(val)
 	}
@@ -101,14 +102,14 @@ func (s *AutoCacheMap[K, V]) ToSlice() []V {
 	return out
 }
 
-func (s *AutoCacheMap[K, V]) Filter(fn func(V) bool) AutoCacheMap[K, V] {
+func (s *AutoCacheMap[K, V]) Filter(fn func(V) bool) *AutoCacheMap[K, V] {
 	out := make(map[K]V)
 	s.traverse(func(val V) {
 		if fn(val) {
 			out[val.ID()] = val
 		}
 	})
-	return AutoCacheMap[K, V]{
+	return &AutoCacheMap[K, V]{
 		data: out,
 	}
 }

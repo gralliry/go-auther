@@ -201,27 +201,35 @@ All measurements on i7-12700H (20 threads), Go 1.26, 5-run average. Enforcement 
 
 | Case | Time/op |
 |---|---|
-| Exact match | ~2.4 ns |
-| Literal miss | ~5.2 ns |
+| Exact match | ~1.4 ns |
+| Literal miss | ~4.0 ns |
 | Single wildcard `*` | ~33 ns |
-| Double wildcard `**` | ~40 ns |
-| Deep path `**` | ~90 ns |
+| Double wildcard `**` | ~35 ns |
+| Deep path `**` | ~67 ns |
+
+The matcher uses a split-path strategy: `**`-free patterns take a fast non-backtracking path; patterns containing `**` use iterative backtracking. `HasWildcard` and `HasDoubleStar` use `strings` SIMD intrinsics.
 
 ### Enforcement (role lookup + resource matching)
 
 | Scenario | Time/op |
 |---|---|
-| Exact match hit | ~50 ns |
-| Wildcard match hit | ~85 ns |
-| Literal miss (fast fail) | ~74 ns |
+| Exact match hit | ~57 ns |
+| Wildcard match hit | ~88 ns |
+| Literal miss (fast fail) | ~87 ns |
+| Root enforce (`/**`) | ~73 ns |
+| User enforce (user → role → policy) | ~128 ns |
+| Enforce with 20 policies scanned | ~343 ns |
 
 ### Permission modification
 
 | Scenario | Time/op |
 |---|---|
-| Grant | ~1,518 ns |
-| Revoke | ~710 ns |
-| Revoke with 3-level cascade | ~3,037 ns |
+| Create role | ~541 ns |
+| Grant | ~1,214 ns |
+| Revoke | ~619 ns |
+| Revoke with 3-level cascade | ~2,530 ns |
+| Assign user to role | ~551 ns |
+| Delete role (with cascade) | ~701 ns |
 
 ### Concurrent read-write contention
 
@@ -229,11 +237,11 @@ All measurements on i7-12700H (20 threads), Go 1.26, 5-run average. Enforcement 
 
 | Read/Write ratio | Time/op |
 |---|---|
-| 99% read + 1% write | ~217 ns |
-| 90% read + 10% write | ~763 ns |
-| 70% read + 30% write | ~1,027 ns |
-| 50% read + 50% write | ~1,266 ns |
-| 100% write | ~2,098 ns |
+| 99% read + 1% write | ~255 ns |
+| 90% read + 10% write | ~837 ns |
+| 70% read + 30% write | ~1,052 ns |
+| 50% read + 50% write | ~1,323 ns |
+| 100% write | ~2,080 ns |
 
 ## Internal packages
 
