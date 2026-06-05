@@ -87,8 +87,8 @@ user, _  := m.GetUser("user-id")
 ```go
 role.ID() string
 role.Valid() bool
-role.Enforce(resource Resource) (bool, error)
-role.Grant(resource Resource, grantee *Role) (*Policy, error)
+role.Enforce(resource string) (bool, error)
+role.Grant(resource *Resource, grantee *Role) (*Policy, error)
 role.Revoke(policy *Policy) error
 role.Delete() error
 ```
@@ -105,7 +105,7 @@ user.Valid() bool
 user.Assign(role *Role) error
 user.Unassign(role *Role) error
 user.IsAssign(role *Role) (bool, error)
-user.Enforce(resource Resource) (bool, error)
+user.Enforce(resource string) (bool, error)
 user.Delete() error
 ```
 
@@ -116,8 +116,8 @@ A user holds multiple roles. `Enforce` succeeds if any assigned role has access.
 ```go
 policy.ID() int64
 policy.Valid() bool
-policy.Contains(resource Resource) bool   // true if policy's resource pattern matches the target
-policy.Within(resource Resource) bool     // true if the target pattern contains this policy's resource
+policy.Contains(resource *Resource) bool   // true if policy's resource pattern matches the target
+policy.Within(resource *Resource) bool     // true if the target pattern contains this policy's resource
 ```
 
 ## Resource patterns
@@ -129,9 +129,9 @@ policy.Within(resource Resource) bool     // true if the target pattern contains
 | `/data/**` | Zero or more segments: `/data`, `/data/a/b/c` |
 | `/**` | Everything |
 
-The `*` wildcard matches exactly one path segment. The `**` wildcard matches zero or more segments. Matching is inlined in `Resource.Match` with zero-allocation iterative segment comparison.
+The `*` wildcard matches exactly one path segment. The `**` wildcard matches zero or more segments. Matching uses zero-allocation byte-level scanning with early-exit fast paths.
 
-The `Resource` type auto-normalizes on construction: `path.Clean` resolves `.` and `..`, leading `/` is stripped, and `**` is truncated to appear at most once at the last position.
+The `Resource` type normalizes on construction: duplicate `/` are collapsed, a leading `/` is always present, and `**` is truncated to appear at most once at the last position.
 
 ## Persistence
 
