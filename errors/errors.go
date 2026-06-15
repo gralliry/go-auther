@@ -15,6 +15,7 @@ var (
 // User errors.
 var (
 	ErrUserInvalid         = stderrors.New("user is invalid")
+	ErrUserNotFound        = stderrors.New("user not found")
 	ErrRoleAlreadyAssigned = stderrors.New("role already assigned")
 	ErrRoleNotAssigned     = stderrors.New("role not assigned")
 )

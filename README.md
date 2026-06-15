@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/gralliry/go-auther.svg)](https://pkg.go.dev/github.com/gralliry/go-auther)
 [![Go Version](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev/dl/)
 
-Role-based authorization library for Go with glob pattern resource matching. Permissions are explicit-only — no implicit inheritance.
+Role-based authorization library for Go with glob pattern resource matching. Permissions are **explicit-only** — a role only has access to resources that have been directly granted to it through policies. No implicit inheritance between roles.
 
 ## Installation
 
@@ -20,31 +20,30 @@ import (
     "fmt"
 
     "github.com/gralliry/go-auther"
-    "github.com/gralliry/go-auther/adapter/empty"
+    "github.com/gralliry/go-auther/adapter/driver/empty"
 )
 
 func main() {
-    m, _ := auther.New(empty.New())
+    m, _ := auther.NewManager(empty.New())
 
-    root, _ := m.GetRole("root")
-    admin, _ := m.CreateRole("admin")
-    editor, _ := m.CreateRole("editor")
+    m.CreateRole("admin")
+    m.CreateRole("editor")
 
     // Grant resources from root to roles.
-    root.Grant(auther.Resource("/user/*"), admin)
-    root.Grant(auther.Resource("/reports/*"), admin)
-    root.Grant(auther.Resource("/data/*"), editor)
+    m.Grant("root", "/user/*", "admin")
+    m.Grant("root", "/reports/*", "admin")
+    m.Grant("root", "/data/*", "editor")
 
     // Admin delegates /reports/* to editor.
-    admin.Grant(auther.Resource("/reports/*"), editor)
+    m.Grant("admin", "/reports/*", "editor")
 
     // Create a user and assign a role.
-    alice, _ := m.CreateUser("alice")
-    alice.Assign(editor)
+    m.CreateUser("alice")
+    m.Assign("alice", "editor")
 
-    ok, _ := alice.Enforce(auther.Resource("/data/read"))   // true
-    ok, _ = alice.Enforce(auther.Resource("/reports/q1"))   // true
-    ok, _ = alice.Enforce(auther.Resource("/user/create"))  // false
+    ok, _ := m.EnforceByUser("alice", "/data/read")   // true
+    ok, _ = m.EnforceByUser("alice", "/reports/q1")   // true
+    ok, _ = m.EnforceByUser("alice", "/user/create")  // false
     fmt.Println(ok)
 }
 ```
@@ -63,7 +62,7 @@ alice can:   /data/read, /reports/q1
 alice cannot: /user/create, /**
 ```
 
-Every grant creates a **Policy** object that forms a DAG (directed acyclic graph). A policy tracks its `parents` and `children`, enabling cascade revocation: revoking a policy also revokes descendant policies that have no other valid parent.
+Every grant creates a **Policy** object that forms a DAG (directed acyclic graph). A policy tracks its `parents` counter (the number of grantor policies that subsume it) and its `children`, enabling cascade revocation: revoking a policy also invalidates descendant policies that have no remaining valid parent.
 
 Policy IDs are generated via [snowflake](https://github.com/bwmarrin/snowflake) — globally unique `int64` values.
 
@@ -71,56 +70,42 @@ Policy IDs are generated via [snowflake](https://github.com/bwmarrin/snowflake) 
 
 ### Manager
 
-The entry point. Created via `auther.New(adapter)`.
+The entry point. Created via `auther.NewManager(adapter)`.
 
 ```go
-m, _ := auther.New(adapter)
+m, _ := auther.NewManager(adapter)
 
-root, _  := m.GetRole("root")
-role, _  := m.CreateRole("role-id")
-user, _  := m.CreateUser("user-id")
-user, _  := m.GetUser("user-id")
+// Role management
+m.CreateRole("role-id")                     // → error
+role, ok := m.GetRole("role-id")            // → (*Role, bool)
+m.DeleteRole("role-id")                     // → error
+m.Grant("grantor", "/path/*", "grantee")    // → error
+m.Revoke("role-id", "/path/*")              // → error
+m.EnforceByRole("role-id", "/data/read")       // → (bool, error)
+
+// User management
+m.CreateUser("user-id")                     // → error
+m.CheckUser("user-id")                      // → bool
+m.DeleteUser("user-id")                     // → error
+m.Assign("user-id", "role-id")              // → error
+m.Unassign("user-id", "role-id")            // → error
+m.IsAssigned("user-id", "role-id")          // → (bool, error)
+m.EnforceByUser("user-id", "/data/read")       // → (bool, error)
 ```
 
-### Role
+All public mutation methods operate on role/user ID strings — `*Role` is only used as a read-only handle from `GetRole` for inspection.
 
 ```go
-role.ID() string
-role.Valid() bool
-role.Enforce(resource string) (bool, error)
-role.Grant(resource *Resource, grantee *Role) (*Policy, error)
-role.Revoke(policy *Policy) error
-role.Delete() error
-```
-
-- `Grant` delegates a resource to another role. The grantor must already hold a policy that contains the resource. Self-grant is rejected.
-- `Revoke` removes a policy and cascades to descendant policies that have no other valid parent.
-- `Delete` invalidates the role and revokes all its policies. Persists the deletion to the adapter.
-
-### User
-
-```go
-user.ID() string
-user.Valid() bool
-user.Assign(role *Role) error
-user.Unassign(role *Role) error
-user.IsAssign(role *Role) (bool, error)
-user.Enforce(resource string) (bool, error)
-user.Delete() error
-```
-
-A user holds multiple roles. `Enforce` succeeds if any assigned role has access.
-
-### Policy
-
-```go
-policy.ID() int64
-policy.Valid() bool
-policy.Contains(resource *Resource) bool   // true if policy's resource pattern matches the target
-policy.Within(resource *Resource) bool     // true if the target pattern contains this policy's resource
+role, ok := m.GetRole("admin")
+if ok {
+    // role is a read-only handle; access checks go through the Manager
+    ok, _ := m.EnforceByRole("admin", "/user/create")
+}
 ```
 
 ## Resource patterns
+
+Resource paths are string patterns used in `Grant`, `Revoke`, `EnforceByUser`, and `EnforceByRole` calls. They are normalized internally: duplicate `/` are collapsed and a leading `/` is always added.
 
 | Pattern | Matches |
 |---|---|
@@ -129,9 +114,7 @@ policy.Within(resource *Resource) bool     // true if the target pattern contain
 | `/data/**` | Zero or more segments: `/data`, `/data/a/b/c` |
 | `/**` | Everything |
 
-The `*` wildcard matches exactly one path segment. The `**` wildcard matches zero or more segments. Matching uses zero-allocation byte-level scanning with early-exit fast paths.
-
-The `Resource` type normalizes on construction: duplicate `/` are collapsed, a leading `/` is always present, and `**` is truncated to appear at most once at the last position.
+The `*` wildcard matches exactly one path segment. The `**` wildcard matches zero or more segments. Matching is zero-allocation.
 
 ## Persistence
 
@@ -149,29 +132,29 @@ type Adapter interface {
 }
 ```
 
-All entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`, `adapter.Snapshot`) use plain Go primitives — no dependency on `internal/model` types.
+All entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`, `adapter.Snapshot`) use plain Go primitives.
 
 ### Built-in adapters
 
 **Empty** (in-memory, no persistence):
 
 ```go
-import "github.com/gralliry/go-auther/adapter/empty"
+import "github.com/gralliry/go-auther/adapter/driver/empty"
 
-m, _ := auther.New(empty.New())
+m, _ := auther.NewManager(empty.New())
 ```
 
 **JSON** (file-backed, atomic writes):
 
 ```go
-import "github.com/gralliry/go-auther/adapter/json"
+import "github.com/gralliry/go-auther/adapter/driver/json"
 
-m, _ := auther.New(json.New("/path/to/policy.json"))
+m, _ := auther.NewManager(json.New("/path/to/policy.json"))
 ```
 
 ### Custom adapter
 
-Implement the `Adapter` interface:
+Implement the `adapter.Adapter` interface:
 
 ```go
 type myAdapter struct { /* your storage */ }
@@ -184,70 +167,79 @@ func (a *myAdapter) DeleteUser(userID string) error           { /* ... */ }
 func (a *myAdapter) CreatePolicy(policy adapter.Policy) error { /* ... */ }
 func (a *myAdapter) DeletePolicy(policyID int64) error        { /* ... */ }
 
-m, _ := auther.New(&myAdapter{})
+m, _ := auther.NewManager(&myAdapter{})
 ```
 
 Implementations must be concurrency-safe.
 
 ### Auto-cache pattern
 
-The `internal/pkg/set` package provides `AutoCacheSet` and `AutoCacheMap` — generic collections that handle soft-deletion transparently. When an entity's `Valid()` returns false, it is lazily removed during the next traversal (`Range`, `Any`, `All`, `Filter`, etc.). Callers never need to check `Valid()` after reading from these collections.
+Lazy cleanup for soft-deleted entities. When an entity is deleted, it is silently dropped during the next traversal. Callers never need to check validity after reading — they only ever see valid entries.
 
 ## Performance
 
-All measurements on i7-12700H (20 threads), Go 1.26. Enforcement and mutation benchmarks include lock overhead.
+All measurements on i7-12700H (20 threads), Go 1.26. `Match(string)` calls are zero-allocation; the "Resource creation + match" benchmarks below include the cost of constructing both pattern and target resources.
 
 ### Glob matching
 
 | Case | Time/op | Alloc |
 |---|---|---|
-| Exact match | 26.7 ns | 0 B |
-| Literal miss | 24.9 ns | 0 B |
-| Single wildcard `*` | 20.4 ns | 0 B |
-| Double wildcard `**` | 15.4 ns | 0 B |
-| Deep path `**` | 22.2 ns | 0 B |
+| Exact match | 29 ns | 0 B |
+| Wildcard `*` match | 37 ns | 0 B |
+| Double star `**` match | 33 ns | 0 B |
 
-### Enforcement (role lookup + resource matching)
+### Resource creation + match
+
+| Case | Time/op | Alloc |
+|---|---|---|
+| Exact match | 197 ns | 88 B |
+| Wildcard `*` match | 259 ns | 152 B |
+| Double star `**` match | 298 ns | 280 B |
+| Long path `**` match | 396 ns | 360 B |
+
+### Enforcement
 
 | Scenario | Time/op | Alloc |
 |---|---|---|
-| Exact match hit | 64.9 ns | 0 B |
-| Wildcard match hit | 59.5 ns | 0 B |
-| Literal miss (fast fail) | 57.3 ns | 0 B |
-| Root enforce (`/**`) | 43.4 ns | 0 B |
-| User enforce (user → role → policy) | 96.0 ns | 0 B |
-| Enforce with 20 policies scanned | 226 ns | 0 B |
+| Exact match hit | 71 ns | 0 B |
+| Wildcard match hit | 67 ns | 0 B |
+| Literal miss | 63 ns | 0 B |
+| Root enforce | 60 ns | 0 B |
+| EnforceByUser | 105 ns | 0 B |
+| 20 policies scanned | 255 ns | 0 B |
 
 ### Permission modification
 
 | Scenario | Time/op | Alloc |
 |---|---|---|
-| Create role | 456 ns | 263 B |
-| Grant | 1640 ns | 975 B |
-| Revoke | 793 ns | 440 B |
-| Revoke with 3-level cascade | 2523 ns | 1584 B |
-| Assign user to role | 570 ns | 372 B |
-| Delete role (with cascade) | 515 ns | 0 B |
+| Create role | 605 ns | 255 B |
+| Grant | 1736 ns | 1083 B |
+| Revoke | 1363 ns | 795 B |
+| Delete role | 772 ns | 0 B |
+| Assign user | 715 ns | 383 B |
+| Revoke cascade (3 levels) | 17502 µs | 4055 KB |
 
-### Concurrent read-write contention
+### Concurrency
 
-4 goroutines sharing one `Area` (single `sync.RWMutex`).
+4 goroutines sharing one `Manager`.
 
 | Read/Write ratio | Time/op | Alloc |
 |---|---|---|
-| 99% read + 1% write | 151 ns | 9 B |
-| 90% read + 10% write | 524 ns | 92 B |
-| 70% read + 30% write | 818 ns | 317 B |
-| 50% read + 50% write | 1076 ns | 487 B |
-| 100% write | 1813 ns | 871 B |
+| 99% read + 1% write | 301 ns | 11 B |
+| 90% read + 10% write | 1139 ns | 117 B |
+| 70% read + 30% write | 1735 ns | 396 B |
+| 50% read + 50% write | 2096 ns | 564 B |
+| 100% write | 3668 ns | 1122 B |
 
 ## Internal packages
 
 | Package | Purpose |
 |---|---|
-| `internal/pkg/set` | Generic set types including auto-cache collections |
-| `internal/pkg/algo` | `PruneTree` — DFS-based orphan node removal |
-| `internal/pkg/strutil` | Key normalization with SHA-256 hashing for long keys |
+| `internal/manager` | Core authorization logic — `Manager`, `Role`, `Policy` |
+| `internal/resource` | Path patterns with glob matching |
+| `internal/pkg/set` | Generic set types |
+| `internal/pkg/algo` | DFS-based orphan node removal |
+| `errors` | Sentinel errors |
 
 ## License
 

@@ -1,4 +1,4 @@
-module github.com/gralliry/go-auther/adapter/json
+module github.com/gralliry/go-auther/adapter/driver/json
 
 go 1.26
 

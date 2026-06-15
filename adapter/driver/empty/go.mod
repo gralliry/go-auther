@@ -1,4 +1,4 @@
-module github.com/gralliry/go-auther/adapter/empty
+module github.com/gralliry/go-auther/adapter/driver/empty
 
 go 1.26
 

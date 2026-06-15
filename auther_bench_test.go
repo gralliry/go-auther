@@ -6,94 +6,46 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gralliry/go-auther/adapter/empty"
+	"github.com/gralliry/go-auther/adapter/driver/empty"
+	"github.com/gralliry/go-auther/internal/resource"
 )
-
-// ---------------------------------------------------------------------------
-// Glob matching
-// ---------------------------------------------------------------------------
 
 var benchBool bool
 
-func BenchmarkMatchExact(b *testing.B) {
-	r := NewResource("/user/create")
-	t := NewResource("/user/create")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchBool = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchLiteralMiss(b *testing.B) {
-	r := NewResource("/user/create")
-	t := NewResource("/user/delete")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchBool = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchSingleStar(b *testing.B) {
-	r := NewResource("/user/*")
-	t := NewResource("/user/create")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchBool = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchDoubleStar(b *testing.B) {
-	r := NewResource("/data/**")
-	t := NewResource("/data/a/b/c")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchBool = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchDeepDoubleStar(b *testing.B) {
-	r := NewResource("/api/v1/**")
-	t := NewResource("/api/v1/users/admin/permissions/read/write")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		benchBool = r.Match(t.String())
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Create + Match (1:1 ratio)
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Resource create + match (combined cost)
+// =============================================================================
 
 func BenchmarkCreateMatchExact(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		r := NewResource("/user/create")
-		t := NewResource("/user/create")
+		r := resource.NewResource("/user/create")
+		t := resource.NewResource("/user/create")
 		benchBool = r.Match(t.String())
 	}
 }
 
 func BenchmarkCreateMatchWildcard(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		r := NewResource("/user/*/edit")
-		t := NewResource("/user/alice/edit")
+		r := resource.NewResource("/user/*/edit")
+		t := resource.NewResource("/user/alice/edit")
 		benchBool = r.Match(t.String())
 	}
 }
 
 func BenchmarkCreateMatchDoubleStar(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		r := NewResource("/api/v1/**")
-		t := NewResource("/api/v1/users/admin/data")
+		r := resource.NewResource("/api/v1/**")
+		t := resource.NewResource("/api/v1/users/admin/data")
 		benchBool = r.Match(t.String())
 	}
 }
 
-// ---------------------------------------------------------------------------
-// MatchString vs MatchResource
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Match via Resource.Match(string) — string path (avoids resource.NewResource allocation)
+// =============================================================================
 
 func BenchmarkMatchStringExact(b *testing.B) {
-	r := NewResource("/user/create")
+	r := resource.NewResource("/user/create")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		benchBool = r.Match("/user/create")
@@ -101,7 +53,7 @@ func BenchmarkMatchStringExact(b *testing.B) {
 }
 
 func BenchmarkMatchStringWildcard(b *testing.B) {
-	r := NewResource("/user/*/edit")
+	r := resource.NewResource("/user/*/edit")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		benchBool = r.Match("/user/alice/edit")
@@ -109,162 +61,155 @@ func BenchmarkMatchStringWildcard(b *testing.B) {
 }
 
 func BenchmarkMatchStringDoubleStar(b *testing.B) {
-	r := NewResource("/api/v1/**")
+	r := resource.NewResource("/api/v1/**")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		benchBool = r.Match("/api/v1/users/admin/data")
 	}
 }
 
-// ---------------------------------------------------------------------------
+// =============================================================================
 // Enforcement
-// ---------------------------------------------------------------------------
+// =============================================================================
 
-func BenchmarkEnforceExactHit(b *testing.B) {
+func BenchmarkEnforceByRoleExactHit(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	admin, _ := m.CreateRole("admin")
-	root.Grant(NewResource("/user/create"), admin)
+	m.CreateRole("admin")
+	m.Grant("root", "/user/create", "admin")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchBool, _ = admin.Enforce("/user/create")
+		benchBool, _ = m.EnforceByRole("admin", "/user/create")
 	}
 }
 
-func BenchmarkEnforceWildcardHit(b *testing.B) {
+func BenchmarkEnforceByRoleWildcardHit(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	admin, _ := m.CreateRole("admin")
-	root.Grant(NewResource("/user/*"), admin)
+	m.CreateRole("admin")
+	m.Grant("root", "/user/*", "admin")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchBool, _ = admin.Enforce("/user/create")
+		benchBool, _ = m.EnforceByRole("admin", "/user/create")
 	}
 }
 
-func BenchmarkEnforceLiteralMiss(b *testing.B) {
+func BenchmarkEnforceByRoleLiteralMiss(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	admin, _ := m.CreateRole("admin")
-	root.Grant(NewResource("/user/*"), admin)
+	m.CreateRole("admin")
+	m.Grant("root", "/user/*", "admin")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchBool, _ = admin.Enforce("/data/read")
+		benchBool, _ = m.EnforceByRole("admin", "/data/read")
 	}
 }
 
-func BenchmarkEnforceRoot(b *testing.B) {
+func BenchmarkEnforceByRoleRoot(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchBool, _ = root.Enforce("/anything")
+		benchBool, _ = m.EnforceByRole("root", "/anything")
 	}
 }
 
-func BenchmarkEnforceUser(b *testing.B) {
+func BenchmarkEnforceByUser(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	admin, _ := m.CreateRole("admin")
-	root.Grant(NewResource("/user/*"), admin)
-	alice, _ := m.CreateUser("alice")
-	alice.Assign(admin)
+	m.CreateRole("admin")
+	m.Grant("root", "/user/*", "admin")
+	m.CreateUser("alice")
+	m.Assign("alice", "admin")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchBool, _ = alice.Enforce("/user/create")
+		benchBool, _ = m.EnforceByUser("alice", "/user/create")
 	}
 }
 
-func BenchmarkEnforceManyPolicies(b *testing.B) {
+func BenchmarkEnforceByRoleManyPolicies(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	admin, _ := m.CreateRole("admin")
+	m.CreateRole("admin")
 	for i := 0; i < 20; i++ {
 		id := string(rune('a' + i))
-		root.Grant(NewResource("/"+id+"/*"), admin)
+		m.Grant("root", "/"+id+"/*", "admin")
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		benchBool, _ = admin.Enforce("/k/xyz")
+		benchBool, _ = m.EnforceByRole("admin", "/k/xyz")
 	}
 }
 
-// ---------------------------------------------------------------------------
+// =============================================================================
 // Mutation
-// ---------------------------------------------------------------------------
+// =============================================================================
 
 func BenchmarkGrant(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
-		editor, _ := m.CreateRole(id)
-		root.Grant(NewResource("/data/*"), editor)
+		m.CreateRole(id)
+		m.Grant("root", "/data/*", id)
 	}
 }
 
 func BenchmarkRevoke(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	editor, _ := m.CreateRole("editor")
-	policy, _ := root.Grant(NewResource("/data/*"), editor)
+	m.CreateRole("editor")
+	m.Grant("root", "/data/*", "editor")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		root.Revoke(policy)
-		policy, _ = root.Grant(NewResource("/data/*"), editor)
+		m.Revoke("root", "/data/*")
+		m.Grant("root", "/data/*", "editor")
 	}
 }
 
 func BenchmarkRevokeCascade3Level(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	roleA, _ := m.CreateRole("a")
-	roleB, _ := m.CreateRole("b")
-	roleC, _ := m.CreateRole("c")
+	m.CreateRole("a")
+	m.CreateRole("b")
+	m.CreateRole("c")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		p, _ := root.Grant(NewResource("/data/**"), roleA)
-		roleA.Grant(NewResource("/data/reports/*"), roleB)
-		roleB.Grant(NewResource("/data/reports/q1"), roleC)
-		root.Revoke(p)
+		m.Grant("root", "/data/**", "a")
+		m.Grant("a", "/data/reports/*", "b")
+		m.Grant("b", "/data/reports/q1", "c")
+		m.Revoke("root", "/user/*")
 	}
 }
 
 func BenchmarkRoleDelete(b *testing.B) {
+	m, _ := NewManager(empty.New())
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
-		m, _ := NewManager(empty.New())
-		root, _ := m.GetRole("root")
-		admin, _ := m.CreateRole("admin")
-		editor, _ := m.CreateRole("editor")
-		root.Grant(NewResource("/user/*"), admin)
-		admin.Grant(NewResource("/user/profile"), editor)
+		roleID := "admin" + strconv.Itoa(i)
+		editorID := "editor" + strconv.Itoa(i)
+		m.CreateRole(roleID)
+		m.CreateRole(editorID)
+		m.Grant("root", "/user/*", roleID)
+		m.Grant(roleID, "/user/profile", editorID)
 		b.StartTimer()
 
-		admin.Delete()
+		m.DeleteRole(roleID)
 	}
 }
 
 func BenchmarkUserAssign(b *testing.B) {
 	m, _ := NewManager(empty.New())
-	admin, _ := m.CreateRole("admin")
+	m.CreateRole("admin")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
-		alice, _ := m.CreateUser(id)
-		alice.Assign(admin)
+		m.CreateUser(id)
+		m.Assign(id, "admin")
 	}
 }
 
@@ -278,17 +223,16 @@ func BenchmarkCreateRole(b *testing.B) {
 	}
 }
 
-// ---------------------------------------------------------------------------
+// =============================================================================
 // Concurrent read-write contention
-// ---------------------------------------------------------------------------
+// =============================================================================
 
 func benchConcurrent(b *testing.B, readsPerWrite int) {
 	m, _ := NewManager(empty.New())
-	root, _ := m.GetRole("root")
-	admin, _ := m.CreateRole("admin")
-	root.Grant(NewResource("/user/*"), admin)
-	alice, _ := m.CreateUser("alice")
-	alice.Assign(admin)
+	m.CreateRole("admin")
+	m.Grant("root", "/user/*", "admin")
+	m.CreateUser("alice")
+	m.Assign("alice", "admin")
 
 	var roleCounter atomic.Int64
 	b.ResetTimer()
@@ -302,10 +246,10 @@ func benchConcurrent(b *testing.B, readsPerWrite int) {
 			for i := 0; i < n; i++ {
 				if i%readsPerWrite == 0 {
 					id := roleCounter.Add(1)
-					r, _ := m.CreateRole(string(rune('A'+id%26)) + strconv.Itoa(int(id/26)))
-					root.Grant(NewResource("/data/*"), r)
+					m.CreateRole(string(rune('A'+id%26)) + strconv.Itoa(int(id/26)))
+					m.Grant("root", "/data/*", string(rune('A'+id%26))+strconv.Itoa(int(id/26)))
 				} else {
-					alice.Enforce("/user/create")
+					m.EnforceByUser("alice", "/user/create")
 				}
 			}
 		}()

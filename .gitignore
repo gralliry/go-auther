@@ -1,9 +1,17 @@
-.superpowers/
-.claude/
-CLAUDE.md
-
+# IDE / editor
 .vscode/
 .idea/
 
+# AI / agent config
+.claude/
+.codegraph/
+.serena/
+CLAUDE.md
+AGENTS.md
+.mcp.json
+opencode.jsonc
+.superpowers/
+
+# Build artifacts
 *.exe
 *.tmp

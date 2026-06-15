@@ -2,19 +2,15 @@ package auther
 
 import (
 	"github.com/gralliry/go-auther/adapter"
-	"github.com/gralliry/go-auther/internal/model"
+	"github.com/gralliry/go-auther/internal/manager"
 )
 
 type (
-	Resource = model.Resource
-	Role     = model.Role
-	User     = model.User
-	Policy   = model.Policy
-	Manager  = model.Manager
-	Adapter  = adapter.Adapter
+	Role    = manager.Role
+	Manager = manager.Manager
+	Adapter = adapter.Adapter
 )
 
 var (
-	NewManager  = model.New
-	NewResource = model.NewResource
+	NewManager = manager.New
 )
