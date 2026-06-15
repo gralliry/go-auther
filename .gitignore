@@ -6,11 +6,13 @@
 .claude/
 .codegraph/
 .serena/
+.superpowers/
+
 CLAUDE.md
 AGENTS.md
 .mcp.json
 opencode.jsonc
-.superpowers/
+
 
 # Build artifacts
 *.exe
