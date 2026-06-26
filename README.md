@@ -77,7 +77,6 @@ m, _ := auther.NewManager(adapter)
 
 // Role management
 m.CreateRole("role-id")                     // → error
-role, ok := m.GetRole("role-id")            // → (*Role, bool)
 m.DeleteRole("role-id")                     // → error
 m.Grant("grantor", "/path/*", "grantee")    // → error
 m.Revoke("role-id", "/path/*")              // → error
@@ -92,17 +91,7 @@ m.Unassign("user-id", "role-id")            // → error
 m.IsAssigned("user-id", "role-id")          // → (bool, error)
 m.EnforceByUser("user-id", "/data/read")       // → (bool, error)
 ```
-
-All public mutation methods operate on role/user ID strings — `*Role` is only used as a read-only handle from `GetRole` for inspection.
-
-```go
-role, ok := m.GetRole("admin")
-if ok {
-    // role is a read-only handle; access checks go through the Manager
-    ok, _ := m.EnforceByRole("admin", "/user/create")
-}
-```
-
+## Resource patterns
 ## Resource patterns
 
 Resource paths are string patterns used in `Grant`, `Revoke`, `EnforceByUser`, and `EnforceByRole` calls. They are normalized internally: duplicate `/` are collapsed and a leading `/` is always added.
@@ -178,46 +167,61 @@ Lazy cleanup for soft-deleted entities. When an entity is deleted, it is silentl
 
 ## Performance
 
-All measurements on i7-12700H (20 threads), Go 1.26. `Match(string)` calls are zero-allocation; the "Resource creation + match" benchmarks below include the cost of constructing both pattern and target resources.
+All measurements on i7-12700H (20 threads), Go 1.26.
 
-### Glob matching
+### NewResource + Match
 
-| Case | Time/op | Alloc |
-|---|---|---|
-| Exact match | 29 ns | 0 B |
-| Wildcard `*` match | 37 ns | 0 B |
-| Double star `**` match | 33 ns | 0 B |
-
-### Resource creation + match
+Pattern created each iteration, target as raw `string`.
 
 | Case | Time/op | Alloc |
 |---|---|---|
-| Exact match | 197 ns | 88 B |
-| Wildcard `*` match | 259 ns | 152 B |
-| Double star `**` match | 298 ns | 280 B |
-| Long path `**` match | 396 ns | 360 B |
+| Exact match | 85 ns | 176 B |
+| Wildcard `*` match | 100 ns | 176 B |
+| Double star `**` match | 87 ns | 176 B |
+
+### Match — clean input
+
+Pattern pre-created, target as raw `string`. Zero allocation.
+
+| Case | Time/op | Alloc |
+|---|---|---|
+| Exact match | 13 ns | 0 B |
+| Wildcard `*` match | 20 ns | 0 B |
+| Double star `**` match | 15 ns | 0 B |
+| No match | 17 ns | 0 B |
+| Long path `**` match | 14 ns | 0 B |
+
+### Match — unnormalized input
+
+`Match` handles raw (untrusted) strings directly — no `/` prefix, double slashes, trailing `/`.
+
+| Input | Pattern | Time/op | Alloc |
+|---|---|---|---|
+| `user/create` | `/user/create` | 18 ns | 0 B |
+| `//user//alice/edit` | `/user/*/edit` | 2 ns | 0 B |
+| `/user/create/` | `/user/create` | 15 ns | 0 B |
 
 ### Enforcement
 
 | Scenario | Time/op | Alloc |
 |---|---|---|
-| Exact match hit | 71 ns | 0 B |
-| Wildcard match hit | 67 ns | 0 B |
-| Literal miss | 63 ns | 0 B |
-| Root enforce | 60 ns | 0 B |
-| EnforceByUser | 105 ns | 0 B |
-| 20 policies scanned | 255 ns | 0 B |
+| Exact match hit | 76 ns | 0 B |
+| Wildcard match hit | 66 ns | 0 B |
+| Literal miss | 59 ns | 0 B |
+| Root enforce | 52 ns | 0 B |
+| EnforceByUser | 101 ns | 0 B |
+| 20 policies scanned | 199 ns | 0 B |
 
 ### Permission modification
 
 | Scenario | Time/op | Alloc |
 |---|---|---|
-| Create role | 605 ns | 255 B |
-| Grant | 1736 ns | 1083 B |
-| Revoke | 1363 ns | 795 B |
-| Delete role | 772 ns | 0 B |
-| Assign user | 715 ns | 383 B |
-| Revoke cascade (3 levels) | 17502 µs | 4055 KB |
+| Create role | 592 ns | 255 B |
+| Grant | 1581 ns | 866 B |
+| Revoke | 919 ns | 443 B |
+| Delete role | 3477 ns | 1777 B |
+| Assign user | 533 ns | 352 B |
+| Revoke cascade (3 levels) | 12723 µs | 3177 KB |
 
 ### Concurrency
 
@@ -225,11 +229,11 @@ All measurements on i7-12700H (20 threads), Go 1.26. `Match(string)` calls are z
 
 | Read/Write ratio | Time/op | Alloc |
 |---|---|---|
-| 99% read + 1% write | 301 ns | 11 B |
-| 90% read + 10% write | 1139 ns | 117 B |
-| 70% read + 30% write | 1735 ns | 396 B |
-| 50% read + 50% write | 2096 ns | 564 B |
-| 100% write | 3668 ns | 1122 B |
+| 99% read + 1% write | 4670 ns | 338 B |
+| 90% read + 10% write | 5788 ns | 632 B |
+| 70% read + 30% write | 8857 ns | 1386 B |
+| 50% read + 50% write | 10105 ns | 2071 B |
+| 100% write | 15960 ns | 3631 B |
 
 ## Internal packages
 

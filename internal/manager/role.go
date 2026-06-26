@@ -88,17 +88,6 @@ func (m *Manager) CreateRole(roleID string) error {
 	return nil
 }
 
-// GetRole looks up a role by ID.
-func (m *Manager) GetRole(roleID string) (*Role, bool) {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-	r, ok := m.roles[roleID]
-	if !ok {
-		return nil, false
-	}
-	return r, true
-}
-
 // DeleteRole persists the deletion, then revokes all policies and removes from memory.
 func (m *Manager) DeleteRole(roleID string) error {
 	m.mutex.Lock()
@@ -143,10 +132,9 @@ func (m *Manager) Grant(grantorID, res, granteeID string) error {
 
 	r := resource.NewResource(res)
 
-	parentCount := grantor.srcGrants.Filter(func(p *Policy) bool {
+	if !grantor.srcGrants.Any(func(p *Policy) bool {
 		return p.contains(r)
-	})
-	if parentCount.Length() == 0 {
+	}) {
 		return errors.ErrRoleInsufficient
 	}
 

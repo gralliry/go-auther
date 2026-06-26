@@ -589,8 +589,8 @@ func TestRoleLifecycle(t *testing.T) {
 
 		must(t, m.DeleteRole("admin"))
 
-		_, ok = m.GetRole("admin")
-		if ok {
+		_, err := m.EnforceByRole("admin", "/user/profile")
+		if err == nil {
 			t.Error("admin should be gone after delete")
 		}
 

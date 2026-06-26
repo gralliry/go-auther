@@ -3,12 +3,12 @@ package resource
 import "strings"
 
 type Resource struct {
-	segs []string
+	Segs []string // path segments; Match/Contains iterate directly, zero allocation
 }
 
 func NewResource(raw string) *Resource {
-	var segs []string
 	n := len(raw)
+	segs := make([]string, 0, 8)
 	s := 0
 	for i := range n {
 		switch raw[i] {
@@ -18,133 +18,110 @@ func NewResource(raw string) *Resource {
 			}
 			s = i + 1
 		case '*':
-			// **
 			if i+1 < n && raw[i+1] == '*' {
 				if s < i {
 					segs = append(segs, raw[s:i])
 				}
-				segs = append(segs, raw[i:i+2])
-				return &Resource{segs: segs}
+				segs = append(segs, "**")
+				return &Resource{Segs: segs}
 			}
-			// single *
 			if s < i {
 				segs = append(segs, raw[s:i])
 			}
-			segs = append(segs, raw[i:i+1])
+			segs = append(segs, "*")
 			s = i + 1
 		}
 	}
 	if s < n {
 		segs = append(segs, raw[s:n])
 	}
-	return &Resource{segs: segs}
+	return &Resource{Segs: segs}
 }
 
+// String returns the normalized path, building from segments each call.
 func (r *Resource) String() string {
-	return "/" + strings.Join(r.segs, "/")
+	if len(r.Segs) == 0 {
+		return "/"
+	}
+	return "/" + strings.Join(r.Segs, "/")
 }
 
+// Contains reports whether r subsumes r2. r contains r2 if every segment
+// of r matches the corresponding segment of r2, with ** matching everything
+// and * matching any single segment.
 func (r *Resource) Contains(r2 *Resource) bool {
-	i, j := 0, 0
-	n, m := len(r.segs), len(r2.segs)
-	for i < n && j < m {
-		p := r.segs[i]
-		t := r2.segs[j]
-		switch p {
+	pi, pj := 0, 0
+	for pi < len(r.Segs) && pj < len(r2.Segs) {
+		switch r.Segs[pi] {
 		case "**":
 			return true
 		case "*":
-			i++
-			j++
-			continue
+			pi++
+			pj++
 		default:
-			if p != t {
+			if r.Segs[pi] != r2.Segs[pj] {
 				return false
 			}
-			i++
-			j++
+			pi++
+			pj++
 		}
 	}
-	// pattern ended but target has more segments
-	if i == n && j < m {
+	if pi >= len(r.Segs) && pj < len(r2.Segs) {
 		return false
 	}
-	// target ended but pattern has remaining segments
-	for i < n {
-		if r.segs[i] != "**" {
+	for pi < len(r.Segs) {
+		if r.Segs[pi] != "**" {
 			return false
 		}
-		i++
+		pi++
 	}
 	return true
 }
 
-func (r *Resource) Match(raw string) bool {
-	i, j := 0, 0
-	n := len(raw)
-	pn := len(r.segs)
-
-	var buf []byte
-
-	for i < n {
-		c := raw[i]
-
-		switch c {
-		case '/':
-			if len(buf) > 0 {
-				if j >= pn {
-					return false
-				}
-				seg := r.segs[j]
-				if !matchSeg(seg, string(buf)) {
-					return false
-				}
-				if seg == "**" {
-					return true
-				}
-				j++
-				buf = buf[:0]
-			}
-			i++
-		default:
-			buf = append(buf, c)
-			i++
-		}
-	}
-
-	// flush last segment
-	if len(buf) > 0 {
-		if j >= pn {
-			return false
-		}
-		seg := r.segs[j]
-		if !matchSeg(seg, string(buf)) {
-			return false
-		}
-		if seg == "**" {
+// Match reports whether the target path matches this resource pattern.
+// The target is a raw string — no pre-normalization needed. * matches one
+// segment, ** matches zero or more.
+func (r *Resource) Match(target string) bool {
+	tp := 0
+	for _, seg := range r.Segs {
+		switch seg {
+		case "**":
 			return true
+		case "*":
+			if tp >= len(target) {
+				return false
+			}
+			if target[tp] == '/' {
+				tp++
+			}
+			if tp >= len(target) {
+				return false
+			}
+			for tp < len(target) && target[tp] != '/' {
+				tp++
+			}
+		default:
+			if tp < len(target) && target[tp] == '/' {
+				tp++
+			}
+			if tp >= len(target) {
+				return false
+			}
+			te := tp
+			for te < len(target) && target[te] != '/' {
+				te++
+			}
+			if target[tp:te] != seg {
+				return false
+			}
+			tp = te
 		}
-		j++
 	}
-
-	// pattern remaining
-	for j < pn {
-		if r.segs[j] != "**" {
+	for tp < len(target) {
+		if target[tp] != '/' {
 			return false
 		}
-		return true
+		tp++
 	}
-
-	return j == pn
-}
-
-func matchSeg(pat, seg string) bool {
-	switch pat {
-	case "**":
-		return true
-	case "*":
-		return true
-	default:
-		return pat == seg
-	}
+	return true
 }

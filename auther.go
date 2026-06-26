@@ -6,7 +6,6 @@ import (
 )
 
 type (
-	Role    = manager.Role
 	Manager = manager.Manager
 	Adapter = adapter.Adapter
 )

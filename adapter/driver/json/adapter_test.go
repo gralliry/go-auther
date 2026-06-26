@@ -138,14 +138,14 @@ func TestConcurrency(t *testing.T) {
 	a, _ := New(tempPath(t))
 
 	done := make(chan struct{})
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		go func(id int) {
 			a.CreateRole(adapter.Role{ID: string(rune('A' + id%26))})
 			a.All()
 			done <- struct{}{}
 		}(i)
 	}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		<-done
 	}
 }

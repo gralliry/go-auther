@@ -1,6 +1,8 @@
 package resource
 
-import "testing"
+import (
+	"testing"
+)
 
 // =============================================================================
 // Match tests — organized by pattern category
@@ -23,8 +25,7 @@ func TestMatch(t *testing.T) {
 		}
 		for _, tt := range tests {
 			pa := NewResource(tt.pattern)
-			ta := NewResource(tt.target)
-			if got := pa.Match(ta.String()); got != tt.want {
+			if got := pa.Match(tt.target); got != tt.want {
 				t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 			}
 		}
@@ -61,8 +62,7 @@ func TestMatch(t *testing.T) {
 		}
 		for _, tt := range tests {
 			pa := NewResource(tt.pattern)
-			ta := NewResource(tt.target)
-			if got := pa.Match(ta.String()); got != tt.want {
+			if got := pa.Match(tt.target); got != tt.want {
 				t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 			}
 		}
@@ -139,8 +139,7 @@ func TestMatch(t *testing.T) {
 		}
 		for _, tt := range tests {
 			pa := NewResource(tt.pattern)
-			ta := NewResource(tt.target)
-			if got := pa.Match(ta.String()); got != tt.want {
+			if got := pa.Match(tt.target); got != tt.want {
 				t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 			}
 		}
@@ -168,8 +167,7 @@ func TestMatch(t *testing.T) {
 		}
 		for _, tt := range tests {
 			pa := NewResource(tt.pattern)
-			ta := NewResource(tt.target)
-			if got := pa.Match(ta.String()); got != tt.want {
+			if got := pa.Match(tt.target); got != tt.want {
 				t.Errorf("Match(%q, %q) = %v, want %v", tt.pattern, tt.target, got, tt.want)
 			}
 		}
@@ -179,15 +177,15 @@ func TestMatch(t *testing.T) {
 		t.Parallel()
 		// Single-case sanity checks that don't fit neatly into the tables above.
 		r := NewResource("/**")
-		if !r.Match(NewResource("/foo").String()) {
+		if !r.Match("/foo") {
 			t.Error("/** should match any non-root path")
 		}
 
 		r2 := NewResource("**")
-		if !r2.Match(NewResource("foo").String()) {
+		if !r2.Match("foo") {
 			t.Error("** should match single segment")
 		}
-		if !r2.Match(NewResource("foo/bar").String()) {
+		if !r2.Match("foo/bar") {
 			t.Error("** should match multiple segments")
 		}
 	})
@@ -222,53 +220,3 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// =============================================================================
-// Benchmarks
-// =============================================================================
-
-var benchResult bool
-
-func BenchmarkMatchExact(b *testing.B) {
-	r := NewResource("/user/create")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		t := NewResource("/user/create")
-		benchResult = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchSingleStar(b *testing.B) {
-	r := NewResource("/user/*/edit")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		t := NewResource("/user/alice/edit")
-		benchResult = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchDoubleStar(b *testing.B) {
-	r := NewResource("/a/**/z")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		t := NewResource("/a/b/c/d/e/z")
-		benchResult = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchNoMatch(b *testing.B) {
-	r := NewResource("/user/create")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		t := NewResource("/user/delete")
-		benchResult = r.Match(t.String())
-	}
-}
-
-func BenchmarkMatchLongDoubleStar(b *testing.B) {
-	r := NewResource("/api/v1/**")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		t := NewResource("/api/v1/users/admin/permissions/read/write")
-		benchResult = r.Match(t.String())
-	}
-}

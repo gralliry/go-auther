@@ -86,6 +86,32 @@ func (s *AutoCacheSet[V]) Range(fn func(V)) {
 	s.traverse(fn)
 }
 
+func (s *AutoCacheSet[V]) Count(fn func(V) bool) int {
+	num := 0
+	s.traverse(func(v V) {
+		if fn(v) {
+			num += 1
+		}
+	})
+	return num
+}
+
+func (s *AutoCacheSet[V]) First(fn func(V) bool) (bool, V) {
+	var (
+		ok    bool = false
+		value V
+	)
+	s.traverseIf(func(v V) bool {
+		if fn(v) {
+			ok = true
+			value = v
+			return false
+		}
+		return true
+	})
+	return ok, value
+}
+
 func (s *AutoCacheSet[V]) All(fn func(V) bool) bool {
 	ok := true
 	s.traverseIf(func(v V) bool {
