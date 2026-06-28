@@ -20,14 +20,14 @@ type Manager struct {
 	users map[string]map[string]struct{} // userID → set of roleIDs
 
 	mutex   sync.RWMutex
-	adapter adapter.Adapter
+	adapter adapter.Store // persistence layer — must be concurrency-safe
 	node    *snowflake.Node // unique ID generator for policies
 }
 
-// New creates a Manager by loading persisted state from the adapter.
+// New creates a Manager by loading persisted state from the store.
 // The root role is always present with a /** policy.
-func New(adapter adapter.Adapter) (*Manager, error) {
-	if adapter == nil {
+func New(store adapter.Store) (*Manager, error) {
+	if store == nil {
 		return nil, errors.ErrAdapterRequired
 	}
 	node, err := snowflake.NewNode(gid.Add(1))
@@ -37,7 +37,7 @@ func New(adapter adapter.Adapter) (*Manager, error) {
 	m := &Manager{
 		roles:   make(map[string]*Role),
 		users:   make(map[string]map[string]struct{}),
-		adapter: adapter,
+		adapter: store,
 		node:    node,
 	}
 	if err := m.load(); err != nil {

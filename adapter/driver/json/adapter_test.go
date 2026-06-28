@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gralliry/go-auther/entity"
+	"github.com/gralliry/go-auther/adapter"
 )
 
 func tempPath(t *testing.T) string {
@@ -32,9 +32,9 @@ func TestNew(t *testing.T) {
 
 		// Write data.
 		a1, _ := New(p)
-		a1.CreateRole(entity.Role{ID: "root"})
-		a1.LinkUser(entity.User{ID: "alice", RoleID: "root"})
-		a1.CreatePolicy(entity.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
+		a1.CreateRole(adapter.Role{ID: "root"})
+		a1.LinkUser(adapter.User{ID: "alice", RoleID: "root"})
+		a1.CreatePolicy(adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
 
 		// Reload.
 		a2, err := New(p)
@@ -78,8 +78,8 @@ func TestNew(t *testing.T) {
 func TestMutations(t *testing.T) {
 	t.Run("createDuplicateNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreateRole(entity.Role{ID: "admin"})
-		a.CreateRole(entity.Role{ID: "admin"})
+		a.CreateRole(adapter.Role{ID: "admin"})
+		a.CreateRole(adapter.Role{ID: "admin"})
 
 		snap, _ := a.Snapshot()
 		if len(snap.Role) != 1 {
@@ -89,8 +89,8 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteRole", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreateRole(entity.Role{ID: "admin"})
-		a.DeleteRole(entity.Role{ID: "admin"})
+		a.CreateRole(adapter.Role{ID: "admin"})
+		a.DeleteRole(adapter.Role{ID: "admin"})
 
 		snap, _ := a.Snapshot()
 		if len(snap.Role) != 0 {
@@ -100,8 +100,8 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteUser", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.LinkUser(entity.User{ID: "alice", RoleID: "root"})
-		a.DeleteUser(entity.User{ID: "alice"})
+		a.LinkUser(adapter.User{ID: "alice", RoleID: "root"})
+		a.DeleteUser(adapter.User{ID: "alice"})
 
 		snap, _ := a.Snapshot()
 		if len(snap.User) != 0 {
@@ -111,7 +111,7 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deletePolicy", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreatePolicy(entity.Policy{ID: 42, Resource: "/test"})
+		a.CreatePolicy(adapter.Policy{ID: 42, Resource: "/test"})
 		a.DeletePolicy(42)
 
 		snap, _ := a.Snapshot()
@@ -123,8 +123,8 @@ func TestMutations(t *testing.T) {
 	t.Run("deleteNonexistentNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
 		// These should not error.
-		a.DeleteRole(entity.Role{ID: "nonexistent"})
-		a.DeleteUser(entity.User{ID: "nonexistent"})
+		a.DeleteRole(adapter.Role{ID: "nonexistent"})
+		a.DeleteUser(adapter.User{ID: "nonexistent"})
 		a.DeletePolicy(9999)
 
 		snap, _ := a.Snapshot()
@@ -140,7 +140,7 @@ func TestConcurrency(t *testing.T) {
 	done := make(chan struct{})
 	for i := range 50 {
 		go func(id int) {
-			a.CreateRole(entity.Role{ID: string(rune('A' + id%26))})
+			a.CreateRole(adapter.Role{ID: string(rune('A' + id%26))})
 			a.Snapshot()
 			done <- struct{}{}
 		}(i)

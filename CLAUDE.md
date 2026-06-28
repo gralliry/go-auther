@@ -26,7 +26,7 @@ Go role-tree authorization library (`github.com/gralliry/go-auther`). Permission
 ### Package layout
 
 ```
-auther.go                  # Public API — type aliases (Manager, Adapter, NewManager)
+auther.go                  # Public API — type aliases (Manager, Store, NewManager)
 errors/                    # Sentinel errors (ErrRoleNotFound, ErrUserNotFound, etc.)
 internal/
   manager/                 # Core: Manager, Role, Policy, user operations
@@ -43,8 +43,8 @@ internal/
     algo/
       graph.go             #   PruneTree — DFS orphan removal (currently unused)
 adapter/
-  adapter.go               #   Adapter interface (persistence contract)
-  entity.go                #   Plain types: Role, User, Policy, Snapshot
+  store.go                 #   Store interface (persistence contract)
+  types.go                 #   Plain types: Role, User, Policy, Snapshot
   driver/
     empty/                 #   No-op adapter (dev/testing, single module)
     json/                  #   JSON file-backed adapter (independent Go module, atomic writes)
@@ -75,9 +75,9 @@ auther_test.go             # Integration tests
 
 ### Persistence (`adapter/`)
 
-**`Adapter` interface** — all methods take/pass entity types (not raw IDs):
+**`Store` interface** — all methods take/pass entity types (not raw IDs):
 ```go
-type Adapter interface {
+type Store interface {
     Snapshot() (Snapshot, error)
     CreateRole(role Role) error
     DeleteRole(role Role) error
@@ -89,7 +89,7 @@ type Adapter interface {
 }
 ```
 
-Entity types (`entity.Role`, `entity.User`, `entity.Policy`) use plain Go primitives. `User` stores one record per (ID, RoleID) pair, so a single user can have multiple records.
+Entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`) use plain Go primitives. `User` stores one record per (ID, RoleID) pair, so a single user can have multiple records.
 
 **`driver/noop/`** — no-op adapter. Snapshots are no-ops, Snapshot() returns empty snapshot. Single module (no nested go.mod).
 
@@ -145,6 +145,6 @@ All traversals (`Range`, `Any`, `All`, `Filter`, `Length`, `ToSlice`) in `AutoCa
 - Manager fields are unexported; accessed through exported methods with read/write locks
 - `Policy.parents` is an integer counter (not bool) — supports multi-parent DAG; valid when > 0
 - `Policy.id == 0` reserved for root `/**` policy
-- Public API surface is minimal: `auther.go` exposes `Manager`, `Adapter`, `NewManager`
+- Public API surface is minimal: `auther.go` exposes `Manager`, `Store`, `NewManager`
 - All source files have doc comments on types, functions, and methods — follow the existing pattern when adding new code
 - Preference: use `codegraph_explore` MCP tool for code lookup before grep/Read

@@ -1,5 +1,5 @@
 // Package auther is the public API surface of the role-tree authorization library.
-// It re-exports the core types (Manager, Adapter) and the NewManager constructor
+// It re-exports the core types (Manager, Store) and the NewManager constructor
 // from internal packages so callers only import this one package.
 package auther
 
@@ -12,10 +12,10 @@ import (
 type (
 	// Manager is the top-level orchestrator for all role, user, and policy operations.
 	Manager = manager.Manager
-	// Adapter is the persistence interface that backend drivers must implement.
-	Adapter = adapter.Adapter
+	// Store is the persistence interface that backend drivers must implement.
+	Store = adapter.Store
 )
 
-// NewManager creates a Manager backed by the given Adapter, loading any
+// NewManager creates a Manager backed by the given Store, loading any
 // previously persisted state.
 var NewManager = manager.New

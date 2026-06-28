@@ -1,7 +1,7 @@
 package manager
 
 import (
-	"github.com/gralliry/go-auther/entity"
+	"github.com/gralliry/go-auther/adapter"
 	"github.com/gralliry/go-auther/errors"
 )
 
@@ -36,7 +36,7 @@ func (m *Manager) DeleteUser(userID string) error {
 		return errors.ErrUserNotFound
 	}
 
-	if err := m.adapter.DeleteUser(entity.User{ID: userID}); err != nil {
+	if err := m.adapter.DeleteUser(adapter.User{ID: userID}); err != nil {
 		return err
 	}
 
@@ -59,7 +59,7 @@ func (m *Manager) Assign(userID, roleID string) error {
 	if _, ok := userRoles[roleID]; ok {
 		return errors.ErrRoleAlreadyAssigned
 	}
-	if err := m.adapter.LinkUser(entity.User{ID: userID, RoleID: roleID}); err != nil {
+	if err := m.adapter.LinkUser(adapter.User{ID: userID, RoleID: roleID}); err != nil {
 		return err
 	}
 	userRoles[roleID] = struct{}{}
@@ -81,7 +81,7 @@ func (m *Manager) Unassign(userID, roleID string) error {
 	if _, ok := userRoles[roleID]; !ok {
 		return errors.ErrRoleNotAssigned
 	}
-	if err := m.adapter.UnlinkUser(entity.User{ID: userID, RoleID: roleID}); err != nil {
+	if err := m.adapter.UnlinkUser(adapter.User{ID: userID, RoleID: roleID}); err != nil {
 		return err
 	}
 	delete(userRoles, roleID)

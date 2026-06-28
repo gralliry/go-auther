@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/gralliry/go-auther/entity"
+	"github.com/gralliry/go-auther/adapter"
 )
 
 // Adapter is a JSON file-backed entity. All mutations are written atomically
@@ -18,7 +18,7 @@ import (
 type Adapter struct {
 	mu   sync.RWMutex
 	path string
-	data entity.Snapshot
+	data adapter.Snapshot
 }
 
 // New creates a JSON adapter that persists to the given file path.
@@ -37,10 +37,10 @@ func (a *Adapter) load() error {
 	data, err := os.ReadFile(a.path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			a.data = entity.Snapshot{
-				Role:   make([]entity.Role, 0),
-				User:   make([]entity.User, 0),
-				Policy: make([]entity.Policy, 0),
+			a.data = adapter.Snapshot{
+				Role:   make([]adapter.Role, 0),
+				User:   make([]adapter.User, 0),
+				Policy: make([]adapter.Policy, 0),
 			}
 			return a.save()
 		}
@@ -70,19 +70,19 @@ func (a *Adapter) save() error {
 }
 
 // Snapshot returns a copy of the current snapshot.
-func (a *Adapter) Snapshot() (entity.Snapshot, error) {
+func (a *Adapter) Snapshot() (adapter.Snapshot, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
-	return entity.Snapshot{
-		Role:   append([]entity.Role(nil), a.data.Role...),
-		User:   append([]entity.User(nil), a.data.User...),
-		Policy: append([]entity.Policy(nil), a.data.Policy...),
+	return adapter.Snapshot{
+		Role:   append([]adapter.Role(nil), a.data.Role...),
+		User:   append([]adapter.User(nil), a.data.User...),
+		Policy: append([]adapter.Policy(nil), a.data.Policy...),
 	}, nil
 }
 
 // CreateRole adds a role to the snapshot. Duplicate IDs are silently ignored.
-func (a *Adapter) CreateRole(role entity.Role) error {
+func (a *Adapter) CreateRole(role adapter.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -96,7 +96,7 @@ func (a *Adapter) CreateRole(role entity.Role) error {
 }
 
 // DeleteRole removes a role by ID. If the role does not exist, it is a no-op.
-func (a *Adapter) DeleteRole(role entity.Role) error {
+func (a *Adapter) DeleteRole(role adapter.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -112,7 +112,7 @@ func (a *Adapter) DeleteRole(role entity.Role) error {
 // LinkUser adds a user-role binding to the snapshot.
 // Duplicate (ID, RoleID) pairs are silently ignored — the same user can have
 // multiple roles, each stored as a separate record.
-func (a *Adapter) LinkUser(user entity.User) error {
+func (a *Adapter) LinkUser(user adapter.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -126,7 +126,7 @@ func (a *Adapter) LinkUser(user entity.User) error {
 }
 
 // DeleteUser removes all role bindings for the given user ID.
-func (a *Adapter) DeleteUser(user entity.User) error {
+func (a *Adapter) DeleteUser(user adapter.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -142,7 +142,7 @@ func (a *Adapter) DeleteUser(user entity.User) error {
 
 // UnlinkUser removes a single user-role assignment. If the (ID, RoleID) pair
 // does not exist, it is a no-op.
-func (a *Adapter) UnlinkUser(user entity.User) error {
+func (a *Adapter) UnlinkUser(user adapter.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -156,7 +156,7 @@ func (a *Adapter) UnlinkUser(user entity.User) error {
 }
 
 // CreatePolicy adds a policy to the snapshot. Duplicate IDs are silently ignored.
-func (a *Adapter) CreatePolicy(policy entity.Policy) error {
+func (a *Adapter) CreatePolicy(policy adapter.Policy) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
