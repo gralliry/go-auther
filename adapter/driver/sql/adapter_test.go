@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/entity"
 
 	_ "modernc.org/sqlite"
 )
@@ -38,14 +38,14 @@ func TestRoleCreateAndLoad(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	if err := a.CreateRole(adapter.Role{ID: "admin"}); err != nil {
+	if err := a.CreateRole(entity.Role{ID: "admin"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.CreateRole(adapter.Role{ID: "editor"}); err != nil {
+	if err := a.CreateRole(entity.Role{ID: "editor"}); err != nil {
 		t.Fatal(err)
 	}
 
-	snap, err := a.All()
+	snap, err := a.Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,15 +58,15 @@ func TestRoleCreateDuplicateIgnored(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	if err := a.CreateRole(adapter.Role{ID: "admin"}); err != nil {
+	if err := a.CreateRole(entity.Role{ID: "admin"}); err != nil {
 		t.Fatal(err)
 	}
 	// Second insert should be silently ignored.
-	if err := a.CreateRole(adapter.Role{ID: "admin"}); err != nil {
+	if err := a.CreateRole(entity.Role{ID: "admin"}); err != nil {
 		t.Fatal(err)
 	}
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.Role) != 1 {
 		t.Fatalf("got %d roles, want 1", len(snap.Role))
 	}
@@ -76,11 +76,11 @@ func TestRoleDelete(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	a.CreateRole(adapter.Role{ID: "admin"})
-	a.CreateRole(adapter.Role{ID: "editor"})
-	a.DeleteRole(adapter.Role{ID: "admin"})
+	a.CreateRole(entity.Role{ID: "admin"})
+	a.CreateRole(entity.Role{ID: "editor"})
+	a.DeleteRole(entity.Role{ID: "admin"})
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.Role) != 1 {
 		t.Fatalf("got %d roles, want 1", len(snap.Role))
 	}
@@ -93,7 +93,7 @@ func TestRoleDeleteMissing(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 	// Deleting a non-existent role should not error.
-	if err := a.DeleteRole(adapter.Role{ID: "ghost"}); err != nil {
+	if err := a.DeleteRole(entity.Role{ID: "ghost"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -106,11 +106,11 @@ func TestUserCreateAndLoad(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "admin"})
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "editor"})
-	a.CreateUser(adapter.User{ID: "bob", RoleID: "viewer"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "admin"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "editor"})
+	a.LinkUser(entity.User{ID: "bob", RoleID: "viewer"})
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.User) != 3 {
 		t.Fatalf("got %d users, want 3", len(snap.User))
 	}
@@ -120,11 +120,11 @@ func TestUserCreateDuplicateIgnored(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "admin"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "admin"})
 	// Insert same (ID, RoleID) pair — silently ignored.
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "admin"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "admin"})
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.User) != 1 {
 		t.Fatalf("got %d users, want 1", len(snap.User))
 	}
@@ -134,13 +134,13 @@ func TestUserDeleteAllRecords(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "admin"})
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "editor"})
-	a.CreateUser(adapter.User{ID: "bob", RoleID: "viewer"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "admin"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "editor"})
+	a.LinkUser(entity.User{ID: "bob", RoleID: "viewer"})
 
-	a.DeleteUser(adapter.User{ID: "alice"})
+	a.RemoveUser(entity.User{ID: "alice"})
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.User) != 1 {
 		t.Fatalf("got %d users, want 1", len(snap.User))
 	}
@@ -152,7 +152,7 @@ func TestUserDeleteAllRecords(t *testing.T) {
 func TestUserDeleteMissing(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
-	if err := a.DeleteUser(adapter.User{ID: "ghost"}); err != nil {
+	if err := a.RemoveUser(entity.User{ID: "ghost"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -161,12 +161,12 @@ func TestUserUnassign(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "admin"})
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "editor"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "admin"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "editor"})
 
-	a.UnassignUser(adapter.User{ID: "alice", RoleID: "admin"})
+	a.UnlinkUser(entity.User{ID: "alice", RoleID: "admin"})
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.User) != 1 {
 		t.Fatalf("got %d users after unassign, want 1", len(snap.User))
 	}
@@ -179,7 +179,7 @@ func TestUserUnassignMissing(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 	// Unassign non-existent pair — no-op.
-	if err := a.UnassignUser(adapter.User{ID: "alice", RoleID: "ghost"}); err != nil {
+	if err := a.UnlinkUser(entity.User{ID: "alice", RoleID: "ghost"}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -192,13 +192,13 @@ func TestPolicyCreateAndLoad(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	p1 := adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"}
-	p2 := adapter.Policy{ID: 2, GrantorRoleID: "admin", GranteeRoleID: "editor", Resource: "/data/**"}
+	p1 := entity.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"}
+	p2 := entity.Policy{ID: 2, GrantorRoleID: "admin", GranteeRoleID: "editor", Resource: "/data/**"}
 
 	a.CreatePolicy(p1)
 	a.CreatePolicy(p2)
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.Policy) != 2 {
 		t.Fatalf("got %d policies, want 2", len(snap.Policy))
 	}
@@ -208,11 +208,11 @@ func TestPolicyCreateDuplicateIgnored(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	p := adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"}
+	p := entity.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"}
 	a.CreatePolicy(p)
 	a.CreatePolicy(p) // second insert silently ignored
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.Policy) != 1 {
 		t.Fatalf("got %d policies, want 1", len(snap.Policy))
 	}
@@ -222,12 +222,12 @@ func TestPolicyDelete(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	a.CreatePolicy(adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
-	a.CreatePolicy(adapter.Policy{ID: 2, GrantorRoleID: "root", GranteeRoleID: "editor", Resource: "/data/**"})
+	a.CreatePolicy(entity.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
+	a.CreatePolicy(entity.Policy{ID: 2, GrantorRoleID: "root", GranteeRoleID: "editor", Resource: "/data/**"})
 
 	a.DeletePolicy(1)
 
-	snap, _ := a.All()
+	snap, _ := a.Snapshot()
 	if len(snap.Policy) != 1 {
 		t.Fatalf("got %d policies, want 1", len(snap.Policy))
 	}
@@ -252,7 +252,7 @@ func TestAllEmptySnapshot(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
 
-	snap, err := a.All()
+	snap, err := a.Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,13 +266,13 @@ func TestFullSnapshotRoundTrip(t *testing.T) {
 	a := newTestAdapter(t)
 
 	// Populate all three tables.
-	a.CreateRole(adapter.Role{ID: "admin"})
-	a.CreateRole(adapter.Role{ID: "editor"})
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "admin"})
-	a.CreateUser(adapter.User{ID: "alice", RoleID: "editor"})
-	a.CreatePolicy(adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/**"})
+	a.CreateRole(entity.Role{ID: "admin"})
+	a.CreateRole(entity.Role{ID: "editor"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "admin"})
+	a.LinkUser(entity.User{ID: "alice", RoleID: "editor"})
+	a.CreatePolicy(entity.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/**"})
 
-	snap, err := a.All()
+	snap, err := a.Snapshot()
 	if err != nil {
 		t.Fatal(err)
 	}

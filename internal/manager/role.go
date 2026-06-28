@@ -1,7 +1,7 @@
 package manager
 
 import (
-	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/entity"
 	"github.com/gralliry/go-auther/errors"
 	"github.com/gralliry/go-auther/internal/pkg/set"
 	"github.com/gralliry/go-auther/internal/resource"
@@ -76,7 +76,7 @@ func (m *Manager) CreateRole(roleID string) error {
 	if _, ok := m.roles[roleID]; ok {
 		return errors.ErrRoleExists
 	}
-	if err := m.adapter.CreateRole(adapter.Role{ID: roleID}); err != nil {
+	if err := m.adapter.CreateRole(entity.Role{ID: roleID}); err != nil {
 		return err
 	}
 	role := newRole()
@@ -94,7 +94,7 @@ func (m *Manager) DeleteRole(roleID string) error {
 		return errors.ErrRoleNotFound
 	}
 
-	if err := m.adapter.DeleteRole(adapter.Role{ID: roleID}); err != nil {
+	if err := m.adapter.DeleteRole(entity.Role{ID: roleID}); err != nil {
 		return err
 	}
 
@@ -136,7 +136,7 @@ func (m *Manager) Grant(grantorID, res, granteeID string) error {
 
 	policyID := m.generateID()
 
-	if err := m.adapter.CreatePolicy(adapter.Policy{
+	if err := m.adapter.CreatePolicy(entity.Policy{
 		ID:            policyID,
 		Resource:      r.String(),
 		GrantorRoleID: grantorID,

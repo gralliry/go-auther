@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/entity"
 )
 
 func tempPath(t *testing.T) string {
@@ -18,7 +18,7 @@ func TestNew(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		snap, err := a.All()
+		snap, err := a.Snapshot()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -32,16 +32,16 @@ func TestNew(t *testing.T) {
 
 		// Write data.
 		a1, _ := New(p)
-		a1.CreateRole(adapter.Role{ID: "root"})
-		a1.CreateUser(adapter.User{ID: "alice", RoleID: "root"})
-		a1.CreatePolicy(adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
+		a1.CreateRole(entity.Role{ID: "root"})
+		a1.LinkUser(entity.User{ID: "alice", RoleID: "root"})
+		a1.CreatePolicy(entity.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
 
 		// Reload.
 		a2, err := New(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		snap, _ := a2.All()
+		snap, _ := a2.Snapshot()
 		if len(snap.Role) != 1 || snap.Role[0].ID != "root" {
 			t.Errorf("expected 1 role 'root', got %+v", snap.Role)
 		}
@@ -68,7 +68,7 @@ func TestNew(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		snap, _ := a2.All()
+		snap, _ := a2.Snapshot()
 		if len(snap.Role) != 0 {
 			t.Error("expected empty snapshot, .tmp should not affect load")
 		}
@@ -78,10 +78,10 @@ func TestNew(t *testing.T) {
 func TestMutations(t *testing.T) {
 	t.Run("createDuplicateNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreateRole(adapter.Role{ID: "admin"})
-		a.CreateRole(adapter.Role{ID: "admin"})
+		a.CreateRole(entity.Role{ID: "admin"})
+		a.CreateRole(entity.Role{ID: "admin"})
 
-		snap, _ := a.All()
+		snap, _ := a.Snapshot()
 		if len(snap.Role) != 1 {
 			t.Errorf("expected 1 role, got %d", len(snap.Role))
 		}
@@ -89,10 +89,10 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteRole", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreateRole(adapter.Role{ID: "admin"})
-		a.DeleteRole(adapter.Role{ID: "admin"})
+		a.CreateRole(entity.Role{ID: "admin"})
+		a.DeleteRole(entity.Role{ID: "admin"})
 
-		snap, _ := a.All()
+		snap, _ := a.Snapshot()
 		if len(snap.Role) != 0 {
 			t.Errorf("expected 0 roles after delete, got %d", len(snap.Role))
 		}
@@ -100,10 +100,10 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteUser", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreateUser(adapter.User{ID: "alice", RoleID: "root"})
-		a.DeleteUser(adapter.User{ID: "alice"})
+		a.LinkUser(entity.User{ID: "alice", RoleID: "root"})
+		a.RemoveUser(entity.User{ID: "alice"})
 
-		snap, _ := a.All()
+		snap, _ := a.Snapshot()
 		if len(snap.User) != 0 {
 			t.Errorf("expected 0 users after delete, got %d", len(snap.User))
 		}
@@ -111,10 +111,10 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deletePolicy", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		a.CreatePolicy(adapter.Policy{ID: 42, Resource: "/test"})
+		a.CreatePolicy(entity.Policy{ID: 42, Resource: "/test"})
 		a.DeletePolicy(42)
 
-		snap, _ := a.All()
+		snap, _ := a.Snapshot()
 		if len(snap.Policy) != 0 {
 			t.Errorf("expected 0 policies after delete, got %d", len(snap.Policy))
 		}
@@ -123,11 +123,11 @@ func TestMutations(t *testing.T) {
 	t.Run("deleteNonexistentNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
 		// These should not error.
-		a.DeleteRole(adapter.Role{ID: "nonexistent"})
-		a.DeleteUser(adapter.User{ID: "nonexistent"})
+		a.DeleteRole(entity.Role{ID: "nonexistent"})
+		a.RemoveUser(entity.User{ID: "nonexistent"})
 		a.DeletePolicy(9999)
 
-		snap, _ := a.All()
+		snap, _ := a.Snapshot()
 		if len(snap.Role) != 0 || len(snap.User) != 0 || len(snap.Policy) != 0 {
 			t.Error("deleting nonexistent entities should not create entries")
 		}
@@ -140,8 +140,8 @@ func TestConcurrency(t *testing.T) {
 	done := make(chan struct{})
 	for i := range 50 {
 		go func(id int) {
-			a.CreateRole(adapter.Role{ID: string(rune('A' + id%26))})
-			a.All()
+			a.CreateRole(entity.Role{ID: string(rune('A' + id%26))})
+			a.Snapshot()
 			done <- struct{}{}
 		}(i)
 	}

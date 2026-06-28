@@ -8,7 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/entity"
 )
 
 // Adapter persists Auther state to any SQL database via database/sql.
@@ -52,36 +52,36 @@ func (a *Adapter) migrate() error {
 }
 
 // All returns a point-in-time snapshot of all persisted state.
-func (a *Adapter) All() (adapter.Snapshot, error) {
+func (a *Adapter) Snapshot() (entity.Snapshot, error) {
 	roles, err := a.allRoles()
 	if err != nil {
-		return adapter.Snapshot{}, err
+		return entity.Snapshot{}, err
 	}
 	users, err := a.allUsers()
 	if err != nil {
-		return adapter.Snapshot{}, err
+		return entity.Snapshot{}, err
 	}
 	policies, err := a.allPolicies()
 	if err != nil {
-		return adapter.Snapshot{}, err
+		return entity.Snapshot{}, err
 	}
-	return adapter.Snapshot{
+	return entity.Snapshot{
 		Role:   roles,
 		User:   users,
 		Policy: policies,
 	}, nil
 }
 
-func (a *Adapter) allRoles() ([]adapter.Role, error) {
+func (a *Adapter) allRoles() ([]entity.Role, error) {
 	rows, err := a.db.Query(`SELECT id FROM role`)
 	if err != nil {
 		return nil, fmt.Errorf("sql adapter: read roles: %w", err)
 	}
 	defer rows.Close()
 
-	var out []adapter.Role
+	var out []entity.Role
 	for rows.Next() {
-		var r adapter.Role
+		var r entity.Role
 		if err := rows.Scan(&r.ID); err != nil {
 			return nil, fmt.Errorf("sql adapter: scan role: %w", err)
 		}
@@ -90,16 +90,16 @@ func (a *Adapter) allRoles() ([]adapter.Role, error) {
 	return out, rows.Err()
 }
 
-func (a *Adapter) allUsers() ([]adapter.User, error) {
+func (a *Adapter) allUsers() ([]entity.User, error) {
 	rows, err := a.db.Query(`SELECT user_id, role_id FROM user_assignment`)
 	if err != nil {
 		return nil, fmt.Errorf("sql adapter: read users: %w", err)
 	}
 	defer rows.Close()
 
-	var out []adapter.User
+	var out []entity.User
 	for rows.Next() {
-		var u adapter.User
+		var u entity.User
 		if err := rows.Scan(&u.ID, &u.RoleID); err != nil {
 			return nil, fmt.Errorf("sql adapter: scan user: %w", err)
 		}
@@ -108,16 +108,16 @@ func (a *Adapter) allUsers() ([]adapter.User, error) {
 	return out, rows.Err()
 }
 
-func (a *Adapter) allPolicies() ([]adapter.Policy, error) {
+func (a *Adapter) allPolicies() ([]entity.Policy, error) {
 	rows, err := a.db.Query(`SELECT id, grantor_role_id, grantee_role_id, resource FROM policy`)
 	if err != nil {
 		return nil, fmt.Errorf("sql adapter: read policies: %w", err)
 	}
 	defer rows.Close()
 
-	var out []adapter.Policy
+	var out []entity.Policy
 	for rows.Next() {
-		var p adapter.Policy
+		var p entity.Policy
 		if err := rows.Scan(&p.ID, &p.GrantorRoleID, &p.GranteeRoleID, &p.Resource); err != nil {
 			return nil, fmt.Errorf("sql adapter: scan policy: %w", err)
 		}
@@ -127,7 +127,7 @@ func (a *Adapter) allPolicies() ([]adapter.Policy, error) {
 }
 
 // CreateRole inserts a new role. Duplicate IDs are silently ignored.
-func (a *Adapter) CreateRole(role adapter.Role) error {
+func (a *Adapter) CreateRole(role entity.Role) error {
 	_, err := a.db.Exec(`INSERT OR IGNORE INTO role (id) VALUES (?)`, role.ID)
 	if err != nil {
 		return fmt.Errorf("sql adapter: create role %q: %w", role.ID, err)
@@ -136,7 +136,7 @@ func (a *Adapter) CreateRole(role adapter.Role) error {
 }
 
 // DeleteRole removes a role by ID. If the role does not exist, it is a no-op.
-func (a *Adapter) DeleteRole(role adapter.Role) error {
+func (a *Adapter) DeleteRole(role entity.Role) error {
 	_, err := a.db.Exec(`DELETE FROM role WHERE id = ?`, role.ID)
 	if err != nil {
 		return fmt.Errorf("sql adapter: delete role %q: %w", role.ID, err)
@@ -144,9 +144,9 @@ func (a *Adapter) DeleteRole(role adapter.Role) error {
 	return nil
 }
 
-// CreateUser adds a user-role assignment. Duplicate (ID, RoleID) pairs are
+// LinkUser adds a user-role binding. Duplicate (ID, RoleID) pairs are
 // silently ignored — the same user can hold multiple roles.
-func (a *Adapter) CreateUser(user adapter.User) error {
+func (a *Adapter) LinkUser(user entity.User) error {
 	_, err := a.db.Exec(`INSERT OR IGNORE INTO user_assignment (user_id, role_id) VALUES (?, ?)`, user.ID, user.RoleID)
 	if err != nil {
 		return fmt.Errorf("sql adapter: create user %q: %w", user.ID, err)
@@ -154,8 +154,8 @@ func (a *Adapter) CreateUser(user adapter.User) error {
 	return nil
 }
 
-// DeleteUser removes all role assignments for the given user ID.
-func (a *Adapter) DeleteUser(user adapter.User) error {
+// RemoveUser removes all role bindings for the given user ID.
+func (a *Adapter) RemoveUser(user entity.User) error {
 	_, err := a.db.Exec(`DELETE FROM user_assignment WHERE user_id = ?`, user.ID)
 	if err != nil {
 		return fmt.Errorf("sql adapter: delete user %q: %w", user.ID, err)
@@ -163,9 +163,9 @@ func (a *Adapter) DeleteUser(user adapter.User) error {
 	return nil
 }
 
-// UnassignUser removes a single user-role assignment. If the (ID, RoleID) pair
+// UnlinkUser removes a single user-role assignment. If the (ID, RoleID) pair
 // does not exist, it is a no-op.
-func (a *Adapter) UnassignUser(user adapter.User) error {
+func (a *Adapter) UnlinkUser(user entity.User) error {
 	_, err := a.db.Exec(`DELETE FROM user_assignment WHERE user_id = ? AND role_id = ?`, user.ID, user.RoleID)
 	if err != nil {
 		return fmt.Errorf("sql adapter: unassign user %q role %q: %w", user.ID, user.RoleID, err)
@@ -174,7 +174,7 @@ func (a *Adapter) UnassignUser(user adapter.User) error {
 }
 
 // CreatePolicy inserts a new policy. Duplicate IDs are silently ignored.
-func (a *Adapter) CreatePolicy(policy adapter.Policy) error {
+func (a *Adapter) CreatePolicy(policy entity.Policy) error {
 	_, err := a.db.Exec(
 		`INSERT OR IGNORE INTO policy (id, grantor_role_id, grantee_role_id, resource) VALUES (?, ?, ?, ?)`,
 		policy.ID, policy.GrantorRoleID, policy.GranteeRoleID, policy.Resource,

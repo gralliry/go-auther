@@ -53,7 +53,7 @@ func (m *Manager) generateID() int64 {
 
 // load populates the in-memory state from the adapter.
 func (m *Manager) load() error {
-	data, err := m.adapter.All()
+	data, err := m.adapter.Snapshot()
 	if err != nil {
 		return err
 	}

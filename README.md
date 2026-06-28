@@ -112,21 +112,21 @@ Write-through: every mutation is persisted via the adapter before updating in-me
 
 ```go
 type Adapter interface {
-    All() (Snapshot, error)
+    Snapshot() (Snapshot, error)
 
     CreateRole(role Role) error
     DeleteRole(role Role) error
 
-    CreateUser(user User) error
-    DeleteUser(user User) error
-    UnassignUser(user User) error
+    LinkUser(user User) error
+    RemoveUser(user User) error
+    UnlinkUser(user User) error
 
     CreatePolicy(policy Policy) error
     DeletePolicy(policyID int64) error
 }
 ```
 
-All entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`, `adapter.Snapshot`) use plain Go primitives.
+All entity types (`entity.Role`, `entity.User`, `entity.Policy`, `entity.Snapshot`) use plain Go primitives.
 
 ### Built-in adapters
 
@@ -152,16 +152,18 @@ m, _ := auther.NewManager(a)
 Implement the `adapter.Adapter` interface. Implementations must be concurrency-safe.
 
 ```go
+import "github.com/gralliry/go-auther/entity"
+
 type myAdapter struct { /* your storage */ }
 
-func (a *myAdapter) All() (adapter.Snapshot, error)              { /* ... */ }
-func (a *myAdapter) CreateRole(role adapter.Role) error          { /* ... */ }
-func (a *myAdapter) DeleteRole(role adapter.Role) error          { /* ... */ }
-func (a *myAdapter) CreateUser(user adapter.User) error          { /* ... */ }
-func (a *myAdapter) DeleteUser(user adapter.User) error          { /* ... */ }
-func (a *myAdapter) UnassignUser(user adapter.User) error        { /* ... */ }
-func (a *myAdapter) CreatePolicy(policy adapter.Policy) error    { /* ... */ }
-func (a *myAdapter) DeletePolicy(policyID int64) error           { /* ... */ }
+func (a *myAdapter) Snapshot() (entity.Snapshot, error)        { /* ... */ }
+func (a *myAdapter) CreateRole(role entity.Role) error            { /* ... */ }
+func (a *myAdapter) DeleteRole(role entity.Role) error            { /* ... */ }
+func (a *myAdapter) LinkUser(user entity.User) error              { /* ... */ }
+func (a *myAdapter) RemoveUser(user entity.User) error            { /* ... */ }
+func (a *myAdapter) UnlinkUser(user entity.User) error            { /* ... */ }
+func (a *myAdapter) CreatePolicy(policy entity.Policy) error      { /* ... */ }
+func (a *myAdapter) DeletePolicy(policyID int64) error             { /* ... */ }
 
 m, _ := auther.NewManager(&myAdapter{})
 ```

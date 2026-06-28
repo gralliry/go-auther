@@ -1,4 +1,8 @@
-package adapter
+// Package entity defines the plain data types used by the Auther adapter interface.
+//
+// These types use only Go primitives so that adapter implementors have zero
+// dependency on any shared structure definitions beyond this package.
+package entity
 
 // Role is a named container that receives and delegates resource access policies.
 // Roles form a DAG via Grant/Revoke; permissions are explicit-only.
@@ -25,7 +29,7 @@ type Policy struct {
 }
 
 // Snapshot is a point-in-time copy of all persisted state.
-// Returned by Adapter.All() at Manager construction time.
+// Returned by Adapter.Snapshot() at Manager construction time.
 type Snapshot struct {
 	Role   []Role
 	User   []User

@@ -3,26 +3,35 @@
 // Implementations of the Adapter interface live in subdirectories
 // (memory, json, sql, etc.) as independent Go modules.
 //
-// The interface uses only primitive Go types so that implementors
-// have zero dependency on any shared structure definitions.
+// The interface and its entity types are separated: this package defines
+// the contract; github.com/gralliry/go-auther/entity provides the types.
 package adapter
+
+import "github.com/gralliry/go-auther/entity"
 
 // Adapter defines the persistence interface for Auther.
 //
 // Implementations must be concurrency-safe.
+//
+// Design principles:
+//   - Create methods are idempotent — duplicate records are silently ignored.
+//   - User operations use a linking metaphor: every User record is a (user, role)
+//     binding. A user without at least one role binding is not persisted.
 type Adapter interface {
-	All() (Snapshot, error)
+	Snapshot() (entity.Snapshot, error)
 
 	// Role methods.
-	CreateRole(role Role) error
-	DeleteRole(role Role) error
+	CreateRole(role entity.Role) error
+	DeleteRole(role entity.Role) error
 
-	// User methods.
-	CreateUser(user User) error
-	DeleteUser(user User) error
-	UnassignUser(user User) error
+	// User methods — binding-based, not entity-based.
+	// LinkUser creates a (user, role) binding; RemoveUser drops all bindings
+	// for the user; UnlinkUser drops one specific binding.
+	LinkUser(user entity.User) error
+	RemoveUser(user entity.User) error
+	UnlinkUser(user entity.User) error
 
 	// Policy methods.
-	CreatePolicy(policy Policy) error
+	CreatePolicy(policy entity.Policy) error
 	DeletePolicy(policyID int64) error
 }

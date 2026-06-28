@@ -1,20 +1,19 @@
 package manager
 
 import (
-	"github.com/gralliry/go-auther/adapter"
+	"github.com/gralliry/go-auther/entity"
 	"github.com/gralliry/go-auther/errors"
 )
 
-// CreateUser creates a new user with the given ID and persists it.
+// CreateUser creates a new user in memory only. The user is not persisted to
+// the adapter until their first role is assigned via Assign — the adapter
+// contract requires every user to have at least one role.
 func (m *Manager) CreateUser(userID string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	if _, ok := m.users[userID]; ok {
 		return errors.ErrUserExists
-	}
-	if err := m.adapter.CreateUser(adapter.User{ID: userID}); err != nil {
-		return err
 	}
 	m.users[userID] = make(map[string]struct{})
 	return nil
@@ -37,7 +36,7 @@ func (m *Manager) DeleteUser(userID string) error {
 		return errors.ErrUserNotFound
 	}
 
-	if err := m.adapter.DeleteUser(adapter.User{ID: userID}); err != nil {
+	if err := m.adapter.RemoveUser(entity.User{ID: userID}); err != nil {
 		return err
 	}
 
@@ -60,7 +59,7 @@ func (m *Manager) Assign(userID, roleID string) error {
 	if _, ok := userRoles[roleID]; ok {
 		return errors.ErrRoleAlreadyAssigned
 	}
-	if err := m.adapter.CreateUser(adapter.User{ID: userID, RoleID: roleID}); err != nil {
+	if err := m.adapter.LinkUser(entity.User{ID: userID, RoleID: roleID}); err != nil {
 		return err
 	}
 	userRoles[roleID] = struct{}{}
@@ -82,7 +81,7 @@ func (m *Manager) Unassign(userID, roleID string) error {
 	if _, ok := userRoles[roleID]; !ok {
 		return errors.ErrRoleNotAssigned
 	}
-	if err := m.adapter.UnassignUser(adapter.User{ID: userID, RoleID: roleID}); err != nil {
+	if err := m.adapter.UnlinkUser(entity.User{ID: userID, RoleID: roleID}); err != nil {
 		return err
 	}
 	delete(userRoles, roleID)

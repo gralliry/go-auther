@@ -78,22 +78,22 @@ auther_test.go             # Integration tests
 **`Adapter` interface** — all methods take/pass entity types (not raw IDs):
 ```go
 type Adapter interface {
-    All() (Snapshot, error)
+    Snapshot() (Snapshot, error)
     CreateRole(role Role) error
     DeleteRole(role Role) error
-    CreateUser(user User) error
-    DeleteUser(user User) error
-    UnassignUser(user User) error
+    LinkUser(user User) error
+    RemoveUser(user User) error
+    UnlinkUser(user User) error
     CreatePolicy(policy Policy) error
     DeletePolicy(policyID int64) error
 }
 ```
 
-Entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`) use plain Go primitives. `User` stores one record per (ID, RoleID) pair, so a single user can have multiple records.
+Entity types (`entity.Role`, `entity.User`, `entity.Policy`) use plain Go primitives. `User` stores one record per (ID, RoleID) pair, so a single user can have multiple records.
 
-**`driver/empty/`** — no-op adapter. All mutations are no-ops, All() returns empty snapshot. Single module (no nested go.mod).
+**`driver/noop/`** — no-op adapter. Snapshots are no-ops, Snapshot() returns empty snapshot. Single module (no nested go.mod).
 
-**`driver/json/`** — JSON file-backed. Independent Go module (`adapter/driver/json/go.mod`). Concurrency-safe via `sync.RWMutex`. Atomic writes (write to `.tmp` then rename). `CreateUser` checks duplicate by (ID, RoleID) combo, not just ID. `DeleteUser` removes all records for the given ID. `UnassignUser` removes one specific (ID, RoleID) pair.
+**`driver/json/`** — JSON file-backed. Independent Go module (`adapter/driver/json/go.mod`). Concurrency-safe via `sync.RWMutex`. Atomic writes (write to `.tmp` then rename). `LinkUser` checks duplicate by (ID, RoleID) combo, not just ID. `RemoveUser` removes all records for the given ID. `UnlinkUser` removes one specific (ID, RoleID) pair.
 
 **Write-through pattern**: all Manager mutations persist via adapter first, then update in-memory state. The one exception is `grant()` which is purely in-memory — the caller (`Grant`) handles persistence before calling `grant()`.
 
@@ -101,10 +101,10 @@ Entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`) use plain Go pri
 |---|---|
 | `CreateRole` | `CreateRole` |
 | `DeleteRole` | `DeleteRole` + `DeletePolicy` (cascade) |
-| `CreateUser` | `CreateUser` |
-| `DeleteUser` | `DeleteUser` |
-| `Assign` | `CreateUser` |
-| `Unassign` | `UnassignUser` |
+| `CreateUser` | *(in-memory only, no adapter call)* |
+| `DeleteUser` | `RemoveUser` |
+| `Assign` | `LinkUser` |
+| `Unassign` | `UnlinkUser` |
 | `Grant` | `CreatePolicy` |
 | `Revoke` | `DeletePolicy` + cascade |
 
