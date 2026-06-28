@@ -101,7 +101,7 @@ func TestMutations(t *testing.T) {
 	t.Run("deleteUser", func(t *testing.T) {
 		a, _ := New(tempPath(t))
 		a.LinkUser(entity.User{ID: "alice", RoleID: "root"})
-		a.RemoveUser(entity.User{ID: "alice"})
+		a.DeleteUser(entity.User{ID: "alice"})
 
 		snap, _ := a.Snapshot()
 		if len(snap.User) != 0 {
@@ -124,7 +124,7 @@ func TestMutations(t *testing.T) {
 		a, _ := New(tempPath(t))
 		// These should not error.
 		a.DeleteRole(entity.Role{ID: "nonexistent"})
-		a.RemoveUser(entity.User{ID: "nonexistent"})
+		a.DeleteUser(entity.User{ID: "nonexistent"})
 		a.DeletePolicy(9999)
 
 		snap, _ := a.Snapshot()

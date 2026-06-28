@@ -118,7 +118,7 @@ type Adapter interface {
     DeleteRole(role Role) error
 
     LinkUser(user User) error
-    RemoveUser(user User) error
+    DeleteUser(user User) error
     UnlinkUser(user User) error
 
     CreatePolicy(policy Policy) error
@@ -160,7 +160,7 @@ func (a *myAdapter) Snapshot() (entity.Snapshot, error)        { /* ... */ }
 func (a *myAdapter) CreateRole(role entity.Role) error            { /* ... */ }
 func (a *myAdapter) DeleteRole(role entity.Role) error            { /* ... */ }
 func (a *myAdapter) LinkUser(user entity.User) error              { /* ... */ }
-func (a *myAdapter) RemoveUser(user entity.User) error            { /* ... */ }
+func (a *myAdapter) DeleteUser(user entity.User) error            { /* ... */ }
 func (a *myAdapter) UnlinkUser(user entity.User) error            { /* ... */ }
 func (a *myAdapter) CreatePolicy(policy entity.Policy) error      { /* ... */ }
 func (a *myAdapter) DeletePolicy(policyID int64) error             { /* ... */ }

@@ -125,8 +125,8 @@ func (a *Adapter) LinkUser(user entity.User) error {
 	return a.save()
 }
 
-// RemoveUser removes all role bindings for the given user ID.
-func (a *Adapter) RemoveUser(user entity.User) error {
+// DeleteUser removes all role bindings for the given user ID.
+func (a *Adapter) DeleteUser(user entity.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 

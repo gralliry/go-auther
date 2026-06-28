@@ -154,8 +154,8 @@ func (a *Adapter) LinkUser(user entity.User) error {
 	return nil
 }
 
-// RemoveUser removes all role bindings for the given user ID.
-func (a *Adapter) RemoveUser(user entity.User) error {
+// DeleteUser removes all role bindings for the given user ID.
+func (a *Adapter) DeleteUser(user entity.User) error {
 	_, err := a.db.Exec(`DELETE FROM user_assignment WHERE user_id = ?`, user.ID)
 	if err != nil {
 		return fmt.Errorf("sql adapter: delete user %q: %w", user.ID, err)

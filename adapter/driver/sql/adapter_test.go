@@ -138,7 +138,7 @@ func TestUserDeleteAllRecords(t *testing.T) {
 	a.LinkUser(entity.User{ID: "alice", RoleID: "editor"})
 	a.LinkUser(entity.User{ID: "bob", RoleID: "viewer"})
 
-	a.RemoveUser(entity.User{ID: "alice"})
+	a.DeleteUser(entity.User{ID: "alice"})
 
 	snap, _ := a.Snapshot()
 	if len(snap.User) != 1 {
@@ -152,7 +152,7 @@ func TestUserDeleteAllRecords(t *testing.T) {
 func TestUserDeleteMissing(t *testing.T) {
 	t.Parallel()
 	a := newTestAdapter(t)
-	if err := a.RemoveUser(entity.User{ID: "ghost"}); err != nil {
+	if err := a.DeleteUser(entity.User{ID: "ghost"}); err != nil {
 		t.Fatal(err)
 	}
 }

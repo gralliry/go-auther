@@ -27,8 +27,8 @@ func (a *Adapter) DeleteRole(role entity.Role) error      { return nil }
 
 // LinkUser is a no-op.
 func (a *Adapter) LinkUser(user entity.User) error { return nil }
-// RemoveUser is a no-op.
-func (a *Adapter) RemoveUser(user entity.User) error      { return nil }
+// DeleteUser is a no-op.
+func (a *Adapter) DeleteUser(user entity.User) error      { return nil }
 // UnlinkUser is a no-op.
 func (a *Adapter) UnlinkUser(user entity.User) error     { return nil }
 

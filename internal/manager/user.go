@@ -36,7 +36,7 @@ func (m *Manager) DeleteUser(userID string) error {
 		return errors.ErrUserNotFound
 	}
 
-	if err := m.adapter.RemoveUser(entity.User{ID: userID}); err != nil {
+	if err := m.adapter.DeleteUser(entity.User{ID: userID}); err != nil {
 		return err
 	}
 

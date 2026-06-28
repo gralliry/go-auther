@@ -25,10 +25,10 @@ type Adapter interface {
 	DeleteRole(role entity.Role) error
 
 	// User methods — binding-based, not entity-based.
-	// LinkUser creates a (user, role) binding; RemoveUser drops all bindings
+	// LinkUser creates a (user, role) binding; DeleteUser drops all bindings
 	// for the user; UnlinkUser drops one specific binding.
 	LinkUser(user entity.User) error
-	RemoveUser(user entity.User) error
+	DeleteUser(user entity.User) error
 	UnlinkUser(user entity.User) error
 
 	// Policy methods.

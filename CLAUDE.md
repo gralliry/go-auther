@@ -82,7 +82,7 @@ type Adapter interface {
     CreateRole(role Role) error
     DeleteRole(role Role) error
     LinkUser(user User) error
-    RemoveUser(user User) error
+    DeleteUser(user User) error
     UnlinkUser(user User) error
     CreatePolicy(policy Policy) error
     DeletePolicy(policyID int64) error
@@ -93,7 +93,7 @@ Entity types (`entity.Role`, `entity.User`, `entity.Policy`) use plain Go primit
 
 **`driver/noop/`** — no-op adapter. Snapshots are no-ops, Snapshot() returns empty snapshot. Single module (no nested go.mod).
 
-**`driver/json/`** — JSON file-backed. Independent Go module (`adapter/driver/json/go.mod`). Concurrency-safe via `sync.RWMutex`. Atomic writes (write to `.tmp` then rename). `LinkUser` checks duplicate by (ID, RoleID) combo, not just ID. `RemoveUser` removes all records for the given ID. `UnlinkUser` removes one specific (ID, RoleID) pair.
+**`driver/json/`** — JSON file-backed. Independent Go module (`adapter/driver/json/go.mod`). Concurrency-safe via `sync.RWMutex`. Atomic writes (write to `.tmp` then rename). `LinkUser` checks duplicate by (ID, RoleID) combo, not just ID. `DeleteUser` removes all records for the given ID. `UnlinkUser` removes one specific (ID, RoleID) pair.
 
 **Write-through pattern**: all Manager mutations persist via adapter first, then update in-memory state. The one exception is `grant()` which is purely in-memory — the caller (`Grant`) handles persistence before calling `grant()`.
 
@@ -102,7 +102,7 @@ Entity types (`entity.Role`, `entity.User`, `entity.Policy`) use plain Go primit
 | `CreateRole` | `CreateRole` |
 | `DeleteRole` | `DeleteRole` + `DeletePolicy` (cascade) |
 | `CreateUser` | *(in-memory only, no adapter call)* |
-| `DeleteUser` | `RemoveUser` |
+| `DeleteUser` | `DeleteUser` |
 | `Assign` | `LinkUser` |
 | `Unassign` | `UnlinkUser` |
 | `Grant` | `CreatePolicy` |
