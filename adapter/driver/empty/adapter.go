@@ -11,6 +11,7 @@ type Adapter struct{}
 // New creates a new in-memory adapter.
 func New() *Adapter { return &Adapter{} }
 
+// All returns an empty snapshot. State is only kept in-memory by the Manager.
 func (a *Adapter) All() (adapter.Snapshot, error) {
 	return adapter.Snapshot{
 		Role:   make([]adapter.Role, 0),
@@ -19,11 +20,17 @@ func (a *Adapter) All() (adapter.Snapshot, error) {
 	}, nil
 }
 
+// CreateRole is a no-op — state lives in the Manager.
 func (a *Adapter) CreateRole(role adapter.Role) error { return nil }
+// DeleteRole is a no-op.
 func (a *Adapter) DeleteRole(roleID string) error      { return nil }
 
+// CreateUser is a no-op.
 func (a *Adapter) CreateUser(user adapter.User) error { return nil }
+// DeleteUser is a no-op.
 func (a *Adapter) DeleteUser(userID string) error      { return nil }
 
+// CreatePolicy is a no-op.
 func (a *Adapter) CreatePolicy(policy adapter.Policy) error { return nil }
+// DeletePolicy is a no-op.
 func (a *Adapter) DeletePolicy(policyID int64) error        { return nil }

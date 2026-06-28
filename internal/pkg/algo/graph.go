@@ -1,7 +1,11 @@
+// Package algo provides generic graph algorithms used internally by Auther.
 package algo
 
 import "maps"
 
+// PruneTree removes orphaned nodes from a parent map by performing a DFS from
+// rootID. Only nodes reachable from rootID are kept; everything else is dropped.
+// The input map is not mutated — a copy is made internally.
 func PruneTree[T comparable](rootID T, parent map[T]T) map[T]T {
 	// Copy to avoid mutating the original map.
 	p := make(map[T]T, len(parent))

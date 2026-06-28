@@ -5,10 +5,6 @@ import (
 	"github.com/gralliry/go-auther/errors"
 )
 
-// ---------------------------------------------------------------------------
-// Manager — User operations
-// ---------------------------------------------------------------------------
-
 // CreateUser creates a new user with the given ID and persists it.
 func (m *Manager) CreateUser(userID string) error {
 	m.mutex.Lock()

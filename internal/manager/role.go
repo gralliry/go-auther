@@ -7,15 +7,15 @@ import (
 	"github.com/gralliry/go-auther/internal/resource"
 )
 
-// ---------------------------------------------------------------------------
-// Role type
-// ---------------------------------------------------------------------------
-
+// Role is a named node in the authorization DAG. Each role holds incoming grants
+// (srcGrants — policies it has received) and outgoing grants (tarGrants — policies
+// it has delegated to others).
 type Role struct {
-	srcGrants *set.AutoCacheSet[*Policy]
-	tarGrants *set.AutoCacheSet[*Policy]
+	srcGrants *set.AutoCacheSet[*Policy] // policies received from grantors
+	tarGrants *set.AutoCacheSet[*Policy] // policies granted to others
 }
 
+// newRole creates an empty role with initialized grant sets.
 func newRole() *Role {
 	return &Role{
 		srcGrants: set.NewAutoCacheSet[*Policy](),
@@ -67,10 +67,6 @@ func (r *Role) grant(res *resource.Resource, grantee *Role, policyID int64) {
 	r.tarGrants.Add(policy)
 	grantee.srcGrants.Add(policy)
 }
-
-// ---------------------------------------------------------------------------
-// Manager — Role operations
-// ---------------------------------------------------------------------------
 
 // CreateRole creates a new role with the given ID and persists it.
 func (m *Manager) CreateRole(roleID string) error {

@@ -1,11 +1,21 @@
+// Package resource provides path pattern normalization and glob-based matching.
+// A Resource stores a path as pre-parsed segments for zero-allocation matching.
 package resource
 
 import "strings"
 
+// Resource holds a normalized path pattern as pre-split segments.
+// Segments are stored directly (not via []byte + unsafe) for clarity.
+// Wildcards: * matches one segment, ** matches zero or more and terminates the pattern.
 type Resource struct {
-	Segs []string // path segments; Match/Contains iterate directly, zero allocation
+	Segs []string // pre-parsed path segments; Match/Contains iterate directly
 }
 
+// NewResource parses a raw path string into pre-split segments, normalizing as it goes:
+//   - strips leading '/'
+//   - collapses duplicate slashes
+//   - ** immediately terminates (everything after is discarded)
+//   - * captures as a single wildcard segment
 func NewResource(raw string) *Resource {
 	n := len(raw)
 	segs := make([]string, 0, 8)

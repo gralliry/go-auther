@@ -10,16 +10,18 @@ import (
 	"github.com/gralliry/go-auther/internal/resource"
 )
 
+// gid is an atomic counter used to assign unique node IDs to snowflake generators.
+// Each Manager instance gets its own snowflake node.
 var gid atomic.Int64
 
 // Manager is the top-level orchestrator. All authorization operations go through it.
 type Manager struct {
-	roles map[string]*Role
-	users map[string]map[string]struct{}
+	roles map[string]*Role          // roleID → role
+	users map[string]map[string]struct{} // userID → set of roleIDs
 
 	mutex   sync.RWMutex
 	adapter adapter.Adapter
-	node    *snowflake.Node
+	node    *snowflake.Node // unique ID generator for policies
 }
 
 // New creates a Manager by loading persisted state from the adapter.
@@ -44,6 +46,7 @@ func New(adapter adapter.Adapter) (*Manager, error) {
 	return m, nil
 }
 
+// generateID returns a globally unique snowflake ID for a new policy.
 func (m *Manager) generateID() int64 {
 	return m.node.Generate().Int64()
 }
