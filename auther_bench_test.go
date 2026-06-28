@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/gralliry/go-auther/adapter/driver/empty"
+	"github.com/gralliry/go-auther/adapter/driver/noop"
 )
 
 var benchBool bool
@@ -16,7 +16,7 @@ var benchBool bool
 // =============================================================================
 
 func BenchmarkEnforceByRoleExactHit(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	m.Grant("root", "/user/create", "admin")
 
@@ -26,7 +26,7 @@ func BenchmarkEnforceByRoleExactHit(b *testing.B) {
 }
 
 func BenchmarkEnforceByRoleWildcardHit(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	m.Grant("root", "/user/*", "admin")
 
@@ -36,7 +36,7 @@ func BenchmarkEnforceByRoleWildcardHit(b *testing.B) {
 }
 
 func BenchmarkEnforceByRoleLiteralMiss(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	m.Grant("root", "/user/*", "admin")
 
@@ -46,7 +46,7 @@ func BenchmarkEnforceByRoleLiteralMiss(b *testing.B) {
 }
 
 func BenchmarkEnforceByRoleRoot(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 
 	for b.Loop() {
 		benchBool, _ = m.EnforceByRole("root", "/anything")
@@ -54,7 +54,7 @@ func BenchmarkEnforceByRoleRoot(b *testing.B) {
 }
 
 func BenchmarkEnforceByUser(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	m.Grant("root", "/user/*", "admin")
 	m.CreateUser("alice")
@@ -66,7 +66,7 @@ func BenchmarkEnforceByUser(b *testing.B) {
 }
 
 func BenchmarkEnforceByRoleManyPolicies(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	for i := range 20 {
 		id := string(rune('a' + i))
@@ -83,7 +83,7 @@ func BenchmarkEnforceByRoleManyPolicies(b *testing.B) {
 // =============================================================================
 
 func BenchmarkCreateRole(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	var i int
 	for b.Loop() {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
@@ -93,7 +93,7 @@ func BenchmarkCreateRole(b *testing.B) {
 }
 
 func BenchmarkRoleDelete(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	var i int
 	for b.Loop() {
 		roleID := "admin" + strconv.Itoa(i)
@@ -112,7 +112,7 @@ func BenchmarkRoleDelete(b *testing.B) {
 // =============================================================================
 
 func BenchmarkGrant(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	var i int
 	for b.Loop() {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
@@ -123,7 +123,7 @@ func BenchmarkGrant(b *testing.B) {
 }
 
 func BenchmarkRevoke(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("editor")
 	m.Grant("root", "/data/*", "editor")
 
@@ -134,7 +134,7 @@ func BenchmarkRevoke(b *testing.B) {
 }
 
 func BenchmarkRevokeCascade3Level(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("a")
 	m.CreateRole("b")
 	m.CreateRole("c")
@@ -152,7 +152,7 @@ func BenchmarkRevokeCascade3Level(b *testing.B) {
 // =============================================================================
 
 func BenchmarkUserAssign(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	var i int
 	for b.Loop() {
@@ -164,7 +164,7 @@ func BenchmarkUserAssign(b *testing.B) {
 }
 
 func BenchmarkUserUnassign(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	m.CreateUser("alice")
 
@@ -175,7 +175,7 @@ func BenchmarkUserUnassign(b *testing.B) {
 }
 
 func BenchmarkCreateUser(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	var i int
 	for b.Loop() {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
@@ -185,7 +185,7 @@ func BenchmarkCreateUser(b *testing.B) {
 }
 
 func BenchmarkDeleteUser(b *testing.B) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	var i int
 	for b.Loop() {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
@@ -200,7 +200,7 @@ func BenchmarkDeleteUser(b *testing.B) {
 // =============================================================================
 
 func benchConcurrent(b *testing.B, readsPerWrite int) {
-	m, _ := NewManager(empty.New())
+	m, _ := NewManager(noop.New())
 	m.CreateRole("admin")
 	m.Grant("root", "/user/*", "admin")
 	m.CreateUser("alice")

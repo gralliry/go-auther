@@ -20,11 +20,11 @@ import (
     "fmt"
 
     "github.com/gralliry/go-auther"
-    "github.com/gralliry/go-auther/adapter/driver/empty"
+    "github.com/gralliry/go-auther/adapter/driver/noop"
 )
 
 func main() {
-    m, _ := auther.NewManager(empty.New())
+    m, _ := auther.NewManager(noop.New())
 
     m.CreateRole("admin")
     m.CreateRole("editor")
@@ -130,12 +130,12 @@ All entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`, `adapter.Sna
 
 ### Built-in adapters
 
-**Empty** — in-memory, no persistence. Good for development and testing.
+**Noop** — no persistence. Good for development and testing.
 
 ```go
-import "github.com/gralliry/go-auther/adapter/driver/empty"
+import "github.com/gralliry/go-auther/adapter/driver/noop"
 
-m, _ := auther.NewManager(empty.New())
+m, _ := auther.NewManager(noop.New())
 ```
 
 **JSON** — file-backed with atomic writes (write to `.tmp` then rename). Concurrency-safe.

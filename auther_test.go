@@ -3,7 +3,7 @@ package auther
 import (
 	"testing"
 
-	"github.com/gralliry/go-auther/adapter/driver/empty"
+	"github.com/gralliry/go-auther/adapter/driver/noop"
 	"github.com/gralliry/go-auther/errors"
 )
 
@@ -19,7 +19,7 @@ var (
 
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
-	m, err := NewManager(empty.New())
+	m, err := NewManager(noop.New())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,11 +1,11 @@
-package empty
+package noop
 
 import (
 	"github.com/gralliry/go-auther/adapter"
 )
 
-// Adapter is a no-op adapter that satisfies the auther.Adapter interface.
-// All state is managed in-memory by the Authorizer itself.
+// Adapter satisfies the auther.Adapter interface with no-op methods.
+// All state is managed in-memory by the Manager.
 type Adapter struct{}
 
 // New creates a new in-memory adapter.
