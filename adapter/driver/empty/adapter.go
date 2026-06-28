@@ -23,12 +23,14 @@ func (a *Adapter) All() (adapter.Snapshot, error) {
 // CreateRole is a no-op — state lives in the Manager.
 func (a *Adapter) CreateRole(role adapter.Role) error { return nil }
 // DeleteRole is a no-op.
-func (a *Adapter) DeleteRole(roleID string) error      { return nil }
+func (a *Adapter) DeleteRole(role adapter.Role) error      { return nil }
 
 // CreateUser is a no-op.
 func (a *Adapter) CreateUser(user adapter.User) error { return nil }
 // DeleteUser is a no-op.
-func (a *Adapter) DeleteUser(userID string) error      { return nil }
+func (a *Adapter) DeleteUser(user adapter.User) error      { return nil }
+// UnassignUser is a no-op.
+func (a *Adapter) UnassignUser(user adapter.User) error     { return nil }
 
 // CreatePolicy is a no-op.
 func (a *Adapter) CreatePolicy(policy adapter.Policy) error { return nil }

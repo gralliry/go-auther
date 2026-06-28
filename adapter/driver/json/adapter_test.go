@@ -90,7 +90,7 @@ func TestMutations(t *testing.T) {
 	t.Run("deleteRole", func(t *testing.T) {
 		a, _ := New(tempPath(t))
 		a.CreateRole(adapter.Role{ID: "admin"})
-		a.DeleteRole("admin")
+		a.DeleteRole(adapter.Role{ID: "admin"})
 
 		snap, _ := a.All()
 		if len(snap.Role) != 0 {
@@ -101,7 +101,7 @@ func TestMutations(t *testing.T) {
 	t.Run("deleteUser", func(t *testing.T) {
 		a, _ := New(tempPath(t))
 		a.CreateUser(adapter.User{ID: "alice", RoleID: "root"})
-		a.DeleteUser("alice")
+		a.DeleteUser(adapter.User{ID: "alice"})
 
 		snap, _ := a.All()
 		if len(snap.User) != 0 {
@@ -123,8 +123,8 @@ func TestMutations(t *testing.T) {
 	t.Run("deleteNonexistentNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
 		// These should not error.
-		a.DeleteRole("nonexistent")
-		a.DeleteUser("nonexistent")
+		a.DeleteRole(adapter.Role{ID: "nonexistent"})
+		a.DeleteUser(adapter.User{ID: "nonexistent"})
 		a.DeletePolicy(9999)
 
 		snap, _ := a.All()

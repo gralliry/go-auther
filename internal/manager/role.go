@@ -94,7 +94,7 @@ func (m *Manager) DeleteRole(roleID string) error {
 		return errors.ErrRoleNotFound
 	}
 
-	if err := m.adapter.DeleteRole(roleID); err != nil {
+	if err := m.adapter.DeleteRole(adapter.Role{ID: roleID}); err != nil {
 		return err
 	}
 

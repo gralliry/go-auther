@@ -50,9 +50,6 @@ func NewResource(raw string) *Resource {
 
 // String returns the normalized path, building from segments each call.
 func (r *Resource) String() string {
-	if len(r.Segs) == 0 {
-		return "/"
-	}
 	return "/" + strings.Join(r.Segs, "/")
 }
 

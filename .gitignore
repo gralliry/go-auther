@@ -8,11 +8,6 @@
 .serena/
 .superpowers/
 
-CLAUDE.md
-AGENTS.md
-.mcp.json
-opencode.jsonc
-
 
 # Build artifacts
 *.exe

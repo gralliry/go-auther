@@ -37,7 +37,7 @@ func (m *Manager) DeleteUser(userID string) error {
 		return errors.ErrUserNotFound
 	}
 
-	if err := m.adapter.DeleteUser(userID); err != nil {
+	if err := m.adapter.DeleteUser(adapter.User{ID: userID}); err != nil {
 		return err
 	}
 
@@ -67,7 +67,7 @@ func (m *Manager) Assign(userID, roleID string) error {
 	return nil
 }
 
-// Unassign removes a role from a user.
+// Unassign removes a role from a user and persists the removal.
 func (m *Manager) Unassign(userID, roleID string) error {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
@@ -81,6 +81,9 @@ func (m *Manager) Unassign(userID, roleID string) error {
 	}
 	if _, ok := userRoles[roleID]; !ok {
 		return errors.ErrRoleNotAssigned
+	}
+	if err := m.adapter.UnassignUser(adapter.User{ID: userID, RoleID: roleID}); err != nil {
+		return err
 	}
 	delete(userRoles, roleID)
 	return nil

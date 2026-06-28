@@ -96,12 +96,12 @@ func (a *Adapter) CreateRole(role adapter.Role) error {
 }
 
 // DeleteRole removes a role by ID. If the role does not exist, it is a no-op.
-func (a *Adapter) DeleteRole(roleID string) error {
+func (a *Adapter) DeleteRole(role adapter.Role) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	for i, r := range a.data.Role {
-		if r.ID == roleID {
+		if r.ID == role.ID {
 			a.data.Role = append(a.data.Role[:i], a.data.Role[i+1:]...)
 			return a.save()
 		}
@@ -109,13 +109,15 @@ func (a *Adapter) DeleteRole(roleID string) error {
 	return nil
 }
 
-// CreateUser adds a user to the snapshot. Duplicate IDs are silently ignored.
+// CreateUser adds a user-role assignment to the snapshot.
+// Duplicate (ID, RoleID) pairs are silently ignored — the same user can have
+// multiple roles, each stored as a separate record.
 func (a *Adapter) CreateUser(user adapter.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	for _, u := range a.data.User {
-		if u.ID == user.ID {
+		if u.ID == user.ID && u.RoleID == user.RoleID {
 			return nil
 		}
 	}
@@ -123,13 +125,29 @@ func (a *Adapter) CreateUser(user adapter.User) error {
 	return a.save()
 }
 
-// DeleteUser removes a user by ID. If the user does not exist, it is a no-op.
-func (a *Adapter) DeleteUser(userID string) error {
+// DeleteUser removes all user records with the given ID.
+func (a *Adapter) DeleteUser(user adapter.User) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	filtered := a.data.User[:0]
+	for _, u := range a.data.User {
+		if u.ID != user.ID {
+			filtered = append(filtered, u)
+		}
+	}
+	a.data.User = filtered
+	return a.save()
+}
+
+// UnassignUser removes a single user-role assignment. If the (ID, RoleID) pair
+// does not exist, it is a no-op.
+func (a *Adapter) UnassignUser(user adapter.User) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	for i, u := range a.data.User {
-		if u.ID == userID {
+		if u.ID == user.ID && u.RoleID == user.RoleID {
 			a.data.User = append(a.data.User[:i], a.data.User[i+1:]...)
 			return a.save()
 		}

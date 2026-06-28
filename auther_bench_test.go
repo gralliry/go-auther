@@ -79,7 +79,36 @@ func BenchmarkEnforceByRoleManyPolicies(b *testing.B) {
 }
 
 // =============================================================================
-// Mutation
+// Mutation — Role
+// =============================================================================
+
+func BenchmarkCreateRole(b *testing.B) {
+	m, _ := NewManager(empty.New())
+	var i int
+	for b.Loop() {
+		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
+		i++
+		m.CreateRole(id)
+	}
+}
+
+func BenchmarkRoleDelete(b *testing.B) {
+	m, _ := NewManager(empty.New())
+	var i int
+	for b.Loop() {
+		roleID := "admin" + strconv.Itoa(i)
+		editorID := "editor" + strconv.Itoa(i)
+		i++
+		m.CreateRole(roleID)
+		m.CreateRole(editorID)
+		m.Grant("root", "/user/*", roleID)
+		m.Grant(roleID, "/user/profile", editorID)
+		m.DeleteRole(roleID)
+	}
+}
+
+// =============================================================================
+// Mutation — Policy (Grant / Revoke)
 // =============================================================================
 
 func BenchmarkGrant(b *testing.B) {
@@ -114,24 +143,13 @@ func BenchmarkRevokeCascade3Level(b *testing.B) {
 		m.Grant("root", "/data/**", "a")
 		m.Grant("a", "/data/reports/*", "b")
 		m.Grant("b", "/data/reports/q1", "c")
-		m.Revoke("root", "/user/*")
+		m.Revoke("root", "/data/**")
 	}
 }
 
-func BenchmarkRoleDelete(b *testing.B) {
-	m, _ := NewManager(empty.New())
-	var i int
-	for b.Loop() {
-		roleID := "admin" + strconv.Itoa(i)
-		editorID := "editor" + strconv.Itoa(i)
-		i++
-		m.CreateRole(roleID)
-		m.CreateRole(editorID)
-		m.Grant("root", "/user/*", roleID)
-		m.Grant(roleID, "/user/profile", editorID)
-		m.DeleteRole(roleID)
-	}
-}
+// =============================================================================
+// Mutation — User (Assign / Unassign)
+// =============================================================================
 
 func BenchmarkUserAssign(b *testing.B) {
 	m, _ := NewManager(empty.New())
@@ -145,13 +163,35 @@ func BenchmarkUserAssign(b *testing.B) {
 	}
 }
 
-func BenchmarkCreateRole(b *testing.B) {
+func BenchmarkUserUnassign(b *testing.B) {
+	m, _ := NewManager(empty.New())
+	m.CreateRole("admin")
+	m.CreateUser("alice")
+
+	for b.Loop() {
+		m.Assign("alice", "admin")
+		m.Unassign("alice", "admin")
+	}
+}
+
+func BenchmarkCreateUser(b *testing.B) {
 	m, _ := NewManager(empty.New())
 	var i int
 	for b.Loop() {
 		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
 		i++
-		m.CreateRole(id)
+		m.CreateUser(id)
+	}
+}
+
+func BenchmarkDeleteUser(b *testing.B) {
+	m, _ := NewManager(empty.New())
+	var i int
+	for b.Loop() {
+		id := string(rune('A'+i%26)) + strconv.Itoa(i/26)
+		i++
+		m.CreateUser(id)
+		m.DeleteUser(id)
 	}
 }
 
