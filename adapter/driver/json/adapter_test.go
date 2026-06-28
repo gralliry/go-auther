@@ -18,6 +18,7 @@ func TestNew(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer a.Close()
 		snap, err := a.Snapshot()
 		if err != nil {
 			t.Fatal(err)
@@ -30,17 +31,17 @@ func TestNew(t *testing.T) {
 	t.Run("loadsExisting", func(t *testing.T) {
 		p := tempPath(t)
 
-		// Write data.
 		a1, _ := New(p)
 		a1.CreateRole(adapter.Role{ID: "root"})
 		a1.LinkUser(adapter.User{ID: "alice", RoleID: "root"})
 		a1.CreatePolicy(adapter.Policy{ID: 1, GrantorRoleID: "root", GranteeRoleID: "admin", Resource: "/user/*"})
+		a1.Close()
 
-		// Reload.
 		a2, err := New(p)
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer a2.Close()
 		snap, _ := a2.Snapshot()
 		if len(snap.Role) != 1 || snap.Role[0].ID != "root" {
 			t.Errorf("expected 1 role 'root', got %+v", snap.Role)
@@ -53,24 +54,13 @@ func TestNew(t *testing.T) {
 		}
 	})
 
-	t.Run("atomicWriteNoCorruption", func(t *testing.T) {
+	t.Run("corruptedFileReturnsError", func(t *testing.T) {
 		p := tempPath(t)
+		os.WriteFile(p, []byte("not valid json"), 0o644)
+
 		_, err := New(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Simulate crashed write: leave a .tmp file behind.
-		os.WriteFile(p+".tmp", []byte("garbage"), 0o644)
-
-		// Load should ignore the .tmp.
-		a2, err := New(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		snap, _ := a2.Snapshot()
-		if len(snap.Role) != 0 {
-			t.Error("expected empty snapshot, .tmp should not affect load")
+		if err == nil {
+			t.Fatal("expected error for corrupted JSON file")
 		}
 	})
 }
@@ -78,6 +68,7 @@ func TestNew(t *testing.T) {
 func TestMutations(t *testing.T) {
 	t.Run("createDuplicateNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
+		defer a.Close()
 		a.CreateRole(adapter.Role{ID: "admin"})
 		a.CreateRole(adapter.Role{ID: "admin"})
 
@@ -89,6 +80,7 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteRole", func(t *testing.T) {
 		a, _ := New(tempPath(t))
+		defer a.Close()
 		a.CreateRole(adapter.Role{ID: "admin"})
 		a.DeleteRole(adapter.Role{ID: "admin"})
 
@@ -100,6 +92,7 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteUser", func(t *testing.T) {
 		a, _ := New(tempPath(t))
+		defer a.Close()
 		a.LinkUser(adapter.User{ID: "alice", RoleID: "root"})
 		a.DeleteUser(adapter.User{ID: "alice"})
 
@@ -111,6 +104,7 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deletePolicy", func(t *testing.T) {
 		a, _ := New(tempPath(t))
+		defer a.Close()
 		a.CreatePolicy(adapter.Policy{ID: 42, Resource: "/test"})
 		a.DeletePolicy(42)
 
@@ -122,7 +116,7 @@ func TestMutations(t *testing.T) {
 
 	t.Run("deleteNonexistentNoop", func(t *testing.T) {
 		a, _ := New(tempPath(t))
-		// These should not error.
+		defer a.Close()
 		a.DeleteRole(adapter.Role{ID: "nonexistent"})
 		a.DeleteUser(adapter.User{ID: "nonexistent"})
 		a.DeletePolicy(9999)
@@ -136,6 +130,7 @@ func TestMutations(t *testing.T) {
 
 func TestConcurrency(t *testing.T) {
 	a, _ := New(tempPath(t))
+	defer a.Close()
 
 	done := make(chan struct{})
 	for i := range 50 {
