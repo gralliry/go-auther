@@ -8,5 +8,5 @@ require github.com/bwmarrin/snowflake v0.3.0
 
 replace (
 	github.com/gralliry/go-auther/adapter/driver/noop => ./adapter/driver/noop
-	github.com/gralliry/go-auther/adapter/driver/json => ./adapter/driver/json
+	github.com/gralliry/go-auther/adapter/driver/msgpack => ./adapter/driver/msgpack
 )

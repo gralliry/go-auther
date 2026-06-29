@@ -1,4 +1,4 @@
-package json
+package msgpack
 
 import (
 	"os"
@@ -9,11 +9,11 @@ import (
 
 func tempPath(t *testing.T) string {
 	t.Helper()
-	return t.TempDir() + "/policy.json"
+	return t.TempDir() + "/policy"
 }
 
 func TestNew(t *testing.T) {
-	t.Run("createsFile", func(t *testing.T) {
+	t.Run("createsFiles", func(t *testing.T) {
 		a, err := New(tempPath(t))
 		if err != nil {
 			t.Fatal(err)
@@ -56,11 +56,11 @@ func TestNew(t *testing.T) {
 
 	t.Run("corruptedFileReturnsError", func(t *testing.T) {
 		p := tempPath(t)
-		os.WriteFile(p, []byte("not valid json"), 0o644)
+		os.WriteFile(p, []byte("garbage"), 0o644)
 
 		_, err := New(p)
 		if err == nil {
-			t.Fatal("expected error for corrupted JSON file")
+			t.Fatal("expected error for corrupted file")
 		}
 	})
 }

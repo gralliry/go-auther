@@ -10,7 +10,7 @@ go test ./...           # main module tests
 go vet ./...
 
 # JSON adapter is an independent Go module
-cd adapter/driver/json && go build ./... && go test ./...
+cd adapter/driver/msgpack && go build ./... && go test ./...
 
 # Benchmarks
 go test -bench . ./internal/resource/
@@ -93,7 +93,7 @@ Entity types (`adapter.Role`, `adapter.User`, `adapter.Policy`) use plain Go pri
 
 **`driver/noop/`** — no-op adapter. Snapshots are no-ops, Snapshot() returns empty snapshot. Single module (no nested go.mod).
 
-**`driver/json/`** — JSON file-backed. Independent Go module (`adapter/driver/json/go.mod`). Concurrency-safe via `sync.RWMutex`. Atomic writes (write to `.tmp` then rename). `LinkUser` checks duplicate by (ID, RoleID) combo, not just ID. `DeleteUser` removes all records for the given ID. `UnlinkUser` removes one specific (ID, RoleID) pair.
+**`driver/json/`** — JSON file-backed. Independent Go module (`adapter/driver/msgpack/go.mod`). Concurrency-safe via `sync.RWMutex`. Atomic writes (write to `.tmp` then rename). `LinkUser` checks duplicate by (ID, RoleID) combo, not just ID. `DeleteUser` removes all records for the given ID. `UnlinkUser` removes one specific (ID, RoleID) pair.
 
 **Write-through pattern**: all Manager mutations persist via adapter first, then update in-memory state. The one exception is `grant()` which is purely in-memory — the caller (`Grant`) handles persistence before calling `grant()`.
 

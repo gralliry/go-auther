@@ -141,7 +141,7 @@ m, _ := auther.NewManager(noop.New())
 **JSON** — file-backed with atomic writes (write to `.tmp` then rename). Concurrency-safe.
 
 ```go
-import "github.com/gralliry/go-auther/adapter/driver/json"
+import "github.com/gralliry/go-auther/adapter/driver/msgpack"
 
 a, _ := json.New("/path/to/policy.json")
 m, _ := auther.NewManager(a)
